@@ -100,6 +100,7 @@ fn do_rooms(
         }
     }
 
+    #[allow(clippy::needless_range_loop)]
     for i in 0..MAXROOMS {
         let top = Point::new((i % 3) as i32 * bsze.x + 1, (i / 3) as i32 * bsze.y);
 
@@ -331,6 +332,7 @@ fn putpass(map: &mut Map, p: Point) {
 
 /// Place gold piles and monsters inside rooms (from `do_rooms` in the original).
 fn place_monsters_and_gold(map: &mut Map, rooms: &mut [GenRoom], rng: &mut impl RogueRng) {
+    #[allow(clippy::needless_range_loop)]
     for i in 0..rooms.len() {
         if rooms[i].gone {
             continue;

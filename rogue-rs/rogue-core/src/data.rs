@@ -139,6 +139,13 @@ pub struct Config {
     pub start_hp: i32,
     /// Player starting strength.
     pub start_strength: i32,
+    /// Player starting armor class (internal value; lower is better).
+    #[serde(default = "default_start_armor")]
+    pub start_armor: i32,
+}
+
+fn default_start_armor() -> i32 {
+    7
 }
 
 /// The complete bundle of game content.

@@ -4,6 +4,7 @@
 //! backend so it can be reused by the bracket-lib frontend, tests, or a future
 //! WASM/web build.
 
+pub mod combat;
 pub mod data;
 pub mod dice;
 pub mod gen;
@@ -11,6 +12,7 @@ pub mod geometry;
 pub mod map;
 pub mod rng;
 
+pub use combat::{roll_attack, Attacker};
 pub use data::GameData;
 pub use dice::{DamageRoll, Dice};
 pub use gen::{Dungeon, LevelDef};

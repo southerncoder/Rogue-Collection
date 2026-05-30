@@ -143,6 +143,15 @@ impl Dungeon {
         }
     }
 
+    /// Resolve a `dungeon.ron` in `dir`, loading any `File` references from
+    /// `dir/levels/`. Returns `None` if the file is missing or invalid.
+    pub fn load(dir: impl AsRef<Path>) -> Option<Dungeon> {
+        let dir = dir.as_ref();
+        let text = std::fs::read_to_string(dir.join("dungeon.ron")).ok()?;
+        let file: DungeonFile = ron::from_str(&text).ok()?;
+        Dungeon::from_file(file, dir).ok()
+    }
+
     /// Resolve a [`DungeonFile`], loading any `File` references from `base_dir`.
     pub fn from_file(file: DungeonFile, base_dir: impl AsRef<Path>) -> Result<Dungeon, String> {
         let base = base_dir.as_ref();

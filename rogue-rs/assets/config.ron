@@ -11,4 +11,5 @@
     stomach_size: 2000,
     start_hp: 12,
     start_strength: 16,
+    start_armor: 7,
 )
