@@ -26,6 +26,7 @@ const MAX_LOG: usize = 200;
 enum Mode {
     Title,
     Playing,
+    Help,
     Dead,
     Won,
 }
@@ -743,6 +744,10 @@ impl Game {
         match self.mode {
             Mode::Title => self.render_title(ctx),
             Mode::Playing => self.render_play(ctx),
+            Mode::Help => {
+                self.render_play(ctx);
+                self.render_help(ctx);
+            }
             Mode::Dead => {
                 self.render_play(ctx);
                 self.render_banner(ctx, "You have died. Press Enter to play again.");
@@ -760,6 +765,40 @@ impl Game {
         ctx.print_centered(13, "Press Enter to begin");
         ctx.print_centered(15, "Move: hjkl / yubn / arrows   Wait: .   Descend: >");
         ctx.print_centered(16, "Pick up: g   Quaff: q   Eat: e   Quit: Esc");
+        ctx.print_centered(18, "Press ? in game for help");
+    }
+
+    fn render_help(&self, ctx: &mut BTerm) {
+        let lines = [
+            "===== HELP =====",
+            "",
+            "Movement",
+            "  h j k l        left / down / up / right",
+            "  y u b n        diagonals",
+            "  arrows / numpad also work",
+            "",
+            "Actions",
+            "  .              wait one turn",
+            "  >              descend stairs (Shift + .)",
+            "  g              pick up item",
+            "  q              quaff potion",
+            "  e              eat food",
+            "",
+            "Other",
+            "  ?              show / hide this help",
+            "  Esc            quit",
+            "",
+            "Press any key to return to the game.",
+        ];
+        let top = (SCREEN_HEIGHT - lines.len() as i32) / 2;
+        for (i, line) in lines.iter().enumerate() {
+            ctx.print_color_centered(
+                top + i as i32,
+                RGB::named(WHITE),
+                RGB::named(BLACK),
+                line,
+            );
+        }
     }
 
     fn render_banner(&self, ctx: &mut BTerm, msg: &str) {
@@ -838,8 +877,15 @@ impl Game {
             Mode::Playing => {
                 if ctx.key == Some(VirtualKeyCode::Escape) {
                     ctx.quitting = true;
+                } else if ctx.key == Some(VirtualKeyCode::Slash) {
+                    self.mode = Mode::Help;
                 } else {
                     self.handle_key(ctx);
+                }
+            }
+            Mode::Help => {
+                if ctx.key.is_some() {
+                    self.mode = Mode::Playing;
                 }
             }
             Mode::Dead | Mode::Won => {

@@ -41,6 +41,7 @@ Requires a recent stable Rust toolchain and an OpenGL‑capable display
 | Pick up item      | `g`                                              |
 | Quaff healing     | `q`                                              |
 | Eat food          | `e`                                              |
+| Show help         | `?` (any key closes it)                          |
 | Start / restart   | `Enter`                                          |
 | Quit              | `Esc`                                            |
 
