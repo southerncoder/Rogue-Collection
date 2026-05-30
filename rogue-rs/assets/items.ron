@@ -1,0 +1,116 @@
+// Item tables, taken verbatim from legacy Rogue v5.4.2 extern.c and weapons.c.
+// `prob` is a spawn weight; within each table the weights sum to 100.
+// `worth` is the gold value. Weapon damage uses Rogue's "NxM" dice strings.
+(
+    // Top-level category weights (extern.c `things[]`).
+    categories: [
+        (category: Potion, prob: 26),
+        (category: Scroll, prob: 36),
+        (category: Food,   prob: 16),
+        (category: Weapon, prob:  7),
+        (category: Armor,  prob:  7),
+        (category: Ring,   prob:  4),
+        (category: Stick,  prob:  4),
+    ],
+
+    // pot_info[]
+    potions: [
+        (name: "confusion",         prob:  7, worth:   5),
+        (name: "hallucination",     prob:  8, worth:   5),
+        (name: "poison",            prob:  8, worth:   5),
+        (name: "gain strength",     prob: 13, worth: 150),
+        (name: "see invisible",     prob:  3, worth: 100),
+        (name: "healing",           prob: 13, worth: 130),
+        (name: "monster detection", prob:  6, worth: 130),
+        (name: "magic detection",   prob:  6, worth: 105),
+        (name: "raise level",       prob:  2, worth: 250),
+        (name: "extra healing",     prob:  5, worth: 200),
+        (name: "haste self",        prob:  5, worth: 190),
+        (name: "restore strength",  prob: 13, worth: 130),
+        (name: "blindness",         prob:  5, worth:   5),
+        (name: "levitation",        prob:  6, worth:  75),
+    ],
+
+    // scr_info[]
+    scrolls: [
+        (name: "monster confusion",            prob:  7, worth: 140),
+        (name: "magic mapping",                prob:  4, worth: 150),
+        (name: "hold monster",                 prob:  2, worth: 180),
+        (name: "sleep",                        prob:  3, worth:   5),
+        (name: "enchant armor",                prob:  7, worth: 160),
+        (name: "identify potion",              prob: 10, worth:  80),
+        (name: "identify scroll",              prob: 10, worth:  80),
+        (name: "identify weapon",              prob:  6, worth:  80),
+        (name: "identify armor",               prob:  7, worth: 100),
+        (name: "identify ring, wand or staff", prob: 10, worth: 115),
+        (name: "scare monster",                prob:  3, worth: 200),
+        (name: "food detection",               prob:  2, worth:  60),
+        (name: "teleportation",                prob:  5, worth: 165),
+        (name: "enchant weapon",               prob:  8, worth: 150),
+        (name: "create monster",               prob:  4, worth:  75),
+        (name: "remove curse",                 prob:  7, worth: 105),
+        (name: "aggravate monsters",           prob:  3, worth:  20),
+        (name: "protect armor",                prob:  2, worth: 250),
+    ],
+
+    // ring_info[]
+    rings: [
+        (name: "protection",        prob:  9, worth: 400),
+        (name: "add strength",      prob:  9, worth: 400),
+        (name: "sustain strength",  prob:  5, worth: 280),
+        (name: "searching",         prob: 10, worth: 420),
+        (name: "see invisible",     prob: 10, worth: 310),
+        (name: "adornment",         prob:  1, worth:  10),
+        (name: "aggravate monster", prob: 10, worth:  10),
+        (name: "dexterity",         prob:  8, worth: 440),
+        (name: "increase damage",   prob:  8, worth: 400),
+        (name: "regeneration",      prob:  4, worth: 460),
+        (name: "slow digestion",    prob:  9, worth: 240),
+        (name: "teleportation",     prob:  5, worth:  30),
+        (name: "stealth",           prob:  7, worth: 470),
+        (name: "maintain armor",    prob:  5, worth: 380),
+    ],
+
+    // ws_info[] (wands & staves)
+    sticks: [
+        (name: "light",          prob: 12, worth: 250),
+        (name: "invisibility",   prob:  6, worth:   5),
+        (name: "lightning",      prob:  3, worth: 330),
+        (name: "fire",           prob:  3, worth: 330),
+        (name: "cold",           prob:  3, worth: 330),
+        (name: "polymorph",      prob: 15, worth: 310),
+        (name: "magic missile",  prob: 10, worth: 170),
+        (name: "haste monster",  prob: 10, worth:   5),
+        (name: "slow monster",   prob: 11, worth: 350),
+        (name: "drain life",     prob:  9, worth: 300),
+        (name: "nothing",        prob:  1, worth:   5),
+        (name: "teleport away",  prob:  6, worth: 340),
+        (name: "teleport to",    prob:  6, worth:  50),
+        (name: "cancellation",   prob:  5, worth: 280),
+    ],
+
+    // arm_info[] with base AC from extern.c `a_class[]`.
+    armor: [
+        (name: "leather armor",          prob: 20, worth:  20, base_ac: 8),
+        (name: "ring mail",              prob: 15, worth:  25, base_ac: 7),
+        (name: "studded leather armor",  prob: 15, worth:  20, base_ac: 7),
+        (name: "scale mail",             prob: 13, worth:  30, base_ac: 6),
+        (name: "chain mail",             prob: 12, worth:  75, base_ac: 5),
+        (name: "splint mail",            prob: 10, worth:  80, base_ac: 4),
+        (name: "banded mail",            prob: 10, worth:  90, base_ac: 4),
+        (name: "plate mail",             prob:  5, worth: 150, base_ac: 3),
+    ],
+
+    // weap_info[] merged with damage from weapons.c `init_dam[]`.
+    weapons: [
+        (name: "mace",             prob: 11, worth:  8, damage: "2x4", throw_damage: "1x3"),
+        (name: "long sword",       prob: 11, worth: 15, damage: "3x4", throw_damage: "1x2"),
+        (name: "short bow",        prob: 12, worth: 15, damage: "1x1", throw_damage: "1x1"),
+        (name: "arrow",            prob: 12, worth:  1, damage: "1x1", throw_damage: "2x3", launched_by: Some("short bow"), stacks: true),
+        (name: "dagger",           prob:  8, worth:  3, damage: "1x6", throw_damage: "1x4", stacks: true),
+        (name: "two handed sword", prob: 10, worth: 75, damage: "4x4", throw_damage: "1x2"),
+        (name: "dart",             prob: 12, worth:  2, damage: "1x1", throw_damage: "1x3", stacks: true),
+        (name: "shuriken",         prob: 12, worth:  5, damage: "1x2", throw_damage: "2x4", stacks: true),
+        (name: "spear",            prob: 12, worth:  5, damage: "2x3", throw_damage: "1x6", stacks: true),
+    ],
+)

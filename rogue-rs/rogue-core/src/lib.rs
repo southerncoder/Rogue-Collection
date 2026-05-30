@@ -8,4 +8,6 @@ pub mod data;
 pub mod dice;
 pub mod geometry;
 
-pub use geometry::Point;
+pub use data::GameData;
+pub use dice::{DamageRoll, Dice};
+pub use geometry::{Point, Rect};

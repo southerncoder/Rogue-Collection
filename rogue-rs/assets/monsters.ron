@@ -1,0 +1,34 @@
+// The 26 classic Rogue monsters (A-Z). Stats are taken verbatim from
+// legacy/src/RogueVersions/Rogue_5_4_2/extern.c (the `monsters[26]` table).
+// `armor` is AC (lower is harder to hit); `damage` uses Rogue's "NxM" dice
+// strings, with `/` separating multiple attacks.
+(
+    monsters: [
+        (name: "aquator",       symbol: 'A', carry:   0, flags: [Mean],                strength: 10, experience:   20, level:  5, armor:  2, damage: "0x0/0x0"),
+        (name: "bat",           symbol: 'B', carry:   0, flags: [Fly],                 strength: 10, experience:    1, level:  1, armor:  3, damage: "1x2"),
+        (name: "centaur",       symbol: 'C', carry:  15, flags: [],                    strength: 10, experience:   17, level:  4, armor:  4, damage: "1x2/1x5/1x5"),
+        (name: "dragon",        symbol: 'D', carry: 100, flags: [Mean],                strength: 10, experience: 5000, level: 10, armor: -1, damage: "1x8/1x8/3x10"),
+        (name: "emu",           symbol: 'E', carry:   0, flags: [Mean],                strength: 10, experience:    2, level:  1, armor:  7, damage: "1x2"),
+        (name: "venus flytrap", symbol: 'F', carry:   0, flags: [Mean],                strength: 10, experience:   80, level:  8, armor:  3, damage: "0x0"),
+        (name: "griffin",       symbol: 'G', carry:  20, flags: [Mean, Fly, Regen],    strength: 10, experience: 2000, level: 13, armor:  2, damage: "4x3/3x5"),
+        (name: "hobgoblin",     symbol: 'H', carry:   0, flags: [Mean],                strength: 10, experience:    3, level:  1, armor:  5, damage: "1x8"),
+        (name: "ice monster",   symbol: 'I', carry:   0, flags: [],                    strength: 10, experience:    5, level:  1, armor:  9, damage: "0x0"),
+        (name: "jabberwock",    symbol: 'J', carry:  70, flags: [],                    strength: 10, experience: 3000, level: 15, armor:  6, damage: "2x12/2x4"),
+        (name: "kestrel",       symbol: 'K', carry:   0, flags: [Mean, Fly],           strength: 10, experience:    1, level:  1, armor:  7, damage: "1x4"),
+        (name: "leprechaun",    symbol: 'L', carry:   0, flags: [],                    strength: 10, experience:   10, level:  3, armor:  8, damage: "1x1"),
+        (name: "medusa",        symbol: 'M', carry:  40, flags: [Mean],                strength: 10, experience:  200, level:  8, armor:  2, damage: "3x4/3x4/2x5"),
+        (name: "nymph",         symbol: 'N', carry: 100, flags: [],                    strength: 10, experience:   37, level:  3, armor:  9, damage: "0x0"),
+        (name: "orc",           symbol: 'O', carry:  15, flags: [Greed],               strength: 10, experience:    5, level:  1, armor:  6, damage: "1x8"),
+        (name: "phantom",       symbol: 'P', carry:   0, flags: [Invis],               strength: 10, experience:  120, level:  8, armor:  3, damage: "4x4"),
+        (name: "quagga",        symbol: 'Q', carry:   0, flags: [Mean],                strength: 10, experience:   15, level:  3, armor:  3, damage: "1x5/1x5"),
+        (name: "rattlesnake",   symbol: 'R', carry:   0, flags: [Mean],                strength: 10, experience:    9, level:  2, armor:  3, damage: "1x6"),
+        (name: "snake",         symbol: 'S', carry:   0, flags: [Mean],                strength: 10, experience:    2, level:  1, armor:  5, damage: "1x3"),
+        (name: "troll",         symbol: 'T', carry:  50, flags: [Regen, Mean],         strength: 10, experience:  120, level:  6, armor:  4, damage: "1x8/1x8/2x6"),
+        (name: "black unicorn", symbol: 'U', carry:   0, flags: [Mean],                strength: 10, experience:  190, level:  7, armor: -2, damage: "1x9/1x9/2x9"),
+        (name: "vampire",       symbol: 'V', carry:  20, flags: [Regen, Mean],         strength: 10, experience:  350, level:  8, armor:  1, damage: "1x10"),
+        (name: "wraith",        symbol: 'W', carry:   0, flags: [],                    strength: 10, experience:   55, level:  5, armor:  4, damage: "1x6"),
+        (name: "xeroc",         symbol: 'X', carry:  30, flags: [],                    strength: 10, experience:  100, level:  7, armor:  7, damage: "4x4"),
+        (name: "yeti",          symbol: 'Y', carry:  30, flags: [],                    strength: 10, experience:   50, level:  4, armor:  6, damage: "1x6/1x6"),
+        (name: "zombie",        symbol: 'Z', carry:   0, flags: [Mean],                strength: 10, experience:    6, level:  2, armor:  8, damage: "1x8"),
+    ],
+)

@@ -1,0 +1,14 @@
+// Tunable game constants, lifted from legacy Rogue v5.4.2 `rogue.h`.
+(
+    map_width: 80,
+    map_height: 24,
+    max_rooms: 9,
+    max_passages: 13,
+    max_objects_per_level: 9,
+    max_traps: 10,
+    amulet_level: 26,
+    hunger_time: 1300,
+    stomach_size: 2000,
+    start_hp: 12,
+    start_strength: 16,
+)
