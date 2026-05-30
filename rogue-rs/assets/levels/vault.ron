@@ -1,0 +1,26 @@
+// A hand-authored treasure vault — demonstrates a CUSTOM legend.
+//
+// The `legend` list overrides/extends the built-in characters. Here 'o' is a
+// big fixed gold pile, 'g' is a goblin-by-glyph guard, and 'P' drops a random
+// item. Any character not in the legend falls back to the built-in vocabulary.
+Fixed((
+    rows: [
+        "                                                                                ",
+        "          --------------------------------------------                          ",
+        "          |..........................................|                          ",
+        "          |..o....o....o....o....o....o....o....o.....|                          ",
+        "          |..........................................|                          ",
+        "          |...E................P...............E.....|                          ",
+        "          |..........................................|                          ",
+        "          |..o....o....o....o....o....o....o....o.....|                          ",
+        "          |..........................................|                          ",
+        "          |.....@..............................>.....|                          ",
+        "          |..........................................|                          ",
+        "          --------------------------------------------                          ",
+    ],
+    legend: [
+        (ch: 'o', tile: Some(Floor), spawn: Some(Gold(Some(75)))),
+        (ch: 'P', tile: Some(Floor), spawn: Some(Item)),
+    ],
+    dark: false,
+))

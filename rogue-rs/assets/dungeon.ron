@@ -12,7 +12,7 @@
     name: "The Dungeons of Doom",
     levels: [
         File("entrance.ron"),
-        Procedural(()),
+        File("vault.ron"),
         Procedural(()),
         Procedural((depth: Some(5))),
     ],
