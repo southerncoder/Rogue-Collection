@@ -1,0 +1,12 @@
+[package]
+name = "rogue-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Engine-agnostic Rogue rules, map, entities, generation and data loading."
+
+[dependencies]
+serde = { workspace = true }
+ron = { workspace = true }
+rand = { workspace = true }

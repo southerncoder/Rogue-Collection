@@ -1,0 +1,17 @@
+[package]
+name = "rogue-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "bracket-lib terminal frontend for the modern Rust Rogue."
+
+[dependencies]
+rogue-core = { path = "../rogue-core" }
+bracket-lib = { workspace = true }
+hecs = { workspace = true }
+rand = { workspace = true }
+
+[[bin]]
+name = "rogue"
+path = "src/main.rs"
