@@ -1,0 +1,20 @@
+// Dungeon definition: an ordered list of levels.
+//
+// Each entry is one of:
+//   Procedural(( ... ))  - generated with the classic Rogue algorithm
+//   Fixed(( rows: [...] )) - an inline hand-authored map
+//   File("name.ron")      - load a level (Procedural or Fixed) from levels/name.ron
+//
+// To ADD A LEVEL: insert a new entry here (and, for a fixed map, drop a .ron
+// file in levels/). `repeat_last: true` means once you pass the last defined
+// level the dungeon keeps generating procedural levels forever.
+(
+    name: "The Dungeons of Doom",
+    levels: [
+        File("entrance.ron"),
+        Procedural(()),
+        Procedural(()),
+        Procedural((depth: Some(5))),
+    ],
+    repeat_last: true,
+)

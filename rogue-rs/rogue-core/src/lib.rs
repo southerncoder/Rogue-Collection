@@ -6,8 +6,14 @@
 
 pub mod data;
 pub mod dice;
+pub mod gen;
 pub mod geometry;
+pub mod map;
+pub mod rng;
 
 pub use data::GameData;
 pub use dice::{DamageRoll, Dice};
+pub use gen::{Dungeon, LevelDef};
 pub use geometry::{Point, Rect};
+pub use map::{Map, Spawn, SpawnKind, TileKind};
+pub use rng::RogueRng;
