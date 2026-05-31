@@ -224,6 +224,18 @@ pub struct StatusEffects {
     pub haste: i32,
 }
 
+/// The type of trap at a given position.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TrapKind {
+    #[default]
+    Pit,
+    ArrowTrap,
+    TeleportTrap,
+    BearTrap,
+    PoisonNeedle,
+    SleepiGas,
+}
+
 impl StatusEffects {
     pub fn is_any_active(&self) -> bool {
         self.confused > 0

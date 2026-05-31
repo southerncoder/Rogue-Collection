@@ -2,6 +2,27 @@
   "entries": [
     {
       "name": "adventurer",
+      "depth": 3,
+      "gold": 0,
+      "turns": 91,
+      "won": false
+    },
+    {
+      "name": "adventurer",
+      "depth": 1,
+      "gold": 0,
+      "turns": 0,
+      "won": false
+    },
+    {
+      "name": "adventurer",
+      "depth": 1,
+      "gold": 0,
+      "turns": 0,
+      "won": true
+    },
+    {
+      "name": "adventurer",
       "depth": 1,
       "gold": 0,
       "turns": 0,

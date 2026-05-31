@@ -72,6 +72,8 @@ pub struct Game {
     turns: u64,
     /// Status effects currently active on the player.
     status: StatusEffects,
+    /// Trap kinds registered for the current level.
+    trap_kinds: Vec<(Point, TrapKind)>,
 }
 
 impl Default for Game {
@@ -159,6 +161,7 @@ impl Game {
             log_scroll: 0,
             turns: 0,
             status: StatusEffects::default(),
+            trap_kinds: Vec::new(),
         };
         game.descend_to(1);
         game.log("Welcome to the Dungeons of Doom! Find the Amulet of Yendor.");
@@ -254,6 +257,23 @@ impl Game {
         }
 
         self.recompute_visibility();
+        // Register trap kinds for this level
+        self.trap_kinds.clear();
+        let trap_positions: Vec<Point> = (0..self.map.height)
+            .flat_map(|y| (0..self.map.width).map(move |x| Point::new(x, y)))
+            .filter(|&p| self.map.tile(p) == TileKind::Trap)
+            .collect();
+        for p in trap_positions {
+            let kind = match self.rng.rnd(6) {
+                0 => TrapKind::Pit,
+                1 => TrapKind::ArrowTrap,
+                2 => TrapKind::TeleportTrap,
+                3 => TrapKind::BearTrap,
+                4 => TrapKind::PoisonNeedle,
+                _ => TrapKind::SleepiGas,
+            };
+            self.trap_kinds.push((p, kind));
+        }
         // Place a few secret doors adjacent to passages
         let mut secret_count = 0;
         let map_w = self.map.width;
@@ -541,10 +561,42 @@ impl Game {
             }
         }
         if self.map.tile(p) == TileKind::Trap {
-            let dmg = self.rng.roll(1, 6);
-            self.damage_player(dmg);
-            self.log(format!("A trap springs! You take {dmg} damage."));
+            self.trigger_trap(p);
             self.map.set_tile(p, TileKind::Floor);
+        }
+    }
+
+    fn trigger_trap(&mut self, pos: Point) {
+        let kind = self.trap_kinds.iter().find(|(p, _)| *p == pos).map(|(_, k)| *k).unwrap_or(TrapKind::Pit);
+        match kind {
+            TrapKind::Pit => {
+                let dmg = self.rng.roll(1, 6);
+                self.damage_player(dmg);
+                self.log(format!("You fall into a pit! (-{dmg} HP)"));
+            }
+            TrapKind::ArrowTrap => {
+                let dmg = self.rng.roll(1, 6);
+                self.damage_player(dmg);
+                self.log(format!("An arrow springs from the wall! (-{dmg} HP)"));
+            }
+            TrapKind::TeleportTrap => {
+                self.apply_teleport();
+                self.log("A teleportation trap whisks you away!");
+            }
+            TrapKind::BearTrap => {
+                let dur = 3 + self.rng.rnd(3);
+                self.apply_status("paralyzed", dur);
+                self.log(format!("A bear trap snaps shut on your leg! Paralyzed for {dur} turns."));
+            }
+            TrapKind::PoisonNeedle => {
+                self.apply_status("poisoned", 8);
+                self.log("A poisoned needle pricks you!");
+            }
+            TrapKind::SleepiGas => {
+                let dur = 3 + self.rng.rnd(4);
+                self.apply_status("paralyzed", dur);
+                self.log(format!("Sleeping gas fills the room! You sleep for {dur} turns."));
+            }
         }
     }
 
