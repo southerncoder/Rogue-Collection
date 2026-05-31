@@ -53,6 +53,13 @@ level (fighting anything in the way) and grabs the Amulet when it reaches it —
 handy for demoing or sanity‑checking that a level is actually completable. The
 status line shows `[AUTO]` while it's driving; press `A` again to take over.
 
+**On-screen help.** The two bottom lines are always visible: a permanent key
+reminder (`Move … g:get  >:stairs down  q:quaff  e:eat  ?:help  Esc:quit`) and a
+context prompt that appears when you stand on something useful — e.g. stepping
+onto the down‑stairs (`>`) shows *"Press > to descend to the next level."*
+There are **no portals**: you change levels only via the `>` stairs. Press `?`
+any time for the full controls overlay.
+
 **Goal:** descend to the Amulet of Yendor (level 26), pick it up, and win.
 Watch your **HP**, manage **hunger** (eat before you starve), and pick your
 fights — monsters get nastier the deeper you go.

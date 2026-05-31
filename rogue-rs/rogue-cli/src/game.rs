@@ -949,6 +949,7 @@ impl Game {
         }
 
         self.render_status(ctx);
+        self.render_hints(ctx);
     }
 
     fn render_status(&self, ctx: &mut BTerm) {
@@ -967,6 +968,41 @@ impl Game {
             s.level, s.hp, s.max_hp, s.strength, s.armor, self.gold, s.xp_reward, self.depth, hunger, auto
         );
         ctx.print(0, row, line);
+    }
+
+    /// Two always-on help lines below the status bar: a context-sensitive
+    /// prompt for whatever the player is standing on, and a permanent reminder
+    /// of the most useful keys (so controls are discoverable without the manual).
+    fn render_hints(&self, ctx: &mut BTerm) {
+        let hint_row = self.map.height + MAP_TOP + 1;
+        let footer_row = SCREEN_HEIGHT - 1;
+
+        if let Some(ctx_hint) = self.context_hint() {
+            ctx.print_color(0, hint_row, RGB::named(YELLOW), RGB::named(BLACK), ctx_hint);
+        }
+
+        ctx.print_color(
+            0,
+            footer_row,
+            RGB::named(GRAY),
+            RGB::named(BLACK),
+            "Move:arrows/hjkl  g:get  >:stairs down  q:quaff  e:eat  ?:help  Esc:quit",
+        );
+    }
+
+    /// A prompt describing the action available on the player's current tile,
+    /// if any (standing on stairs, an item, gold, etc.).
+    fn context_hint(&self) -> Option<&'static str> {
+        let p = self.player_pos();
+        if self.map.tile(p) == TileKind::StairsDown {
+            return Some("You are on the stairs down. Press > to descend to the next level.");
+        }
+        if let Some(e) = self.entity_at(p) {
+            if self.world.get::<&Item>(e).is_ok() {
+                return Some("There is an item here. Press g to pick it up.");
+            }
+        }
+        None
     }
 
     // --- Autopilot bot ------------------------------------------------------
