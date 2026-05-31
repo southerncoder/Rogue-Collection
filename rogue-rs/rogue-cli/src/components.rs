@@ -61,6 +61,8 @@ pub struct GoldPile(pub i32);
 pub enum ItemKind {
     /// Restores hit points (healing / extra healing).
     Heal(i32),
+    /// A potion with a specific effect when quaffed.
+    Potion(PotionKind),
     /// Resets the hunger clock.
     Food,
     /// Wieldable weapon.
@@ -79,6 +81,26 @@ pub enum ItemKind {
     Ring(RingKind),
     /// Anything else: carried but inert in this build.
     Trinket,
+}
+
+/// The effect produced when a potion is quaffed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PotionKind {
+    Healing,
+    ExtraHealing,
+    Poison,
+    GainStrength,
+    RestoreStrength,
+    SeeInvisible,
+    Confusion,
+    Blindness,
+    Hallucination,
+    HasteSelf,
+    RaiseLevel,
+    MonsterDetection,
+    MagicDetection,
+    Levitation,
+    Unknown,
 }
 
 /// The effect produced when a scroll is read.

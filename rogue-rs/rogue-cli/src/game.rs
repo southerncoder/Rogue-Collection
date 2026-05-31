@@ -330,16 +330,7 @@ impl Game {
             },
             ItemCategory::Potion => {
                 let p = pick_named(&cats.potions, &mut self.rng);
-                let kind = if p.contains("healing") {
-                    let amount = if p.contains("extra") {
-                        self.rng.roll(3, 8) + 6
-                    } else {
-                        self.rng.roll(2, 8) + 2
-                    };
-                    ItemKind::Heal(amount)
-                } else {
-                    ItemKind::Trinket
-                };
+                let kind = ItemKind::Potion(potion_kind_from_name(&p));
                 Item {
                     name: format!("potion of {p}"),
                     kind,
@@ -594,22 +585,96 @@ impl Game {
     }
 
     fn quaff(&mut self) -> bool {
-        if let Some(i) = self
+        let pos = self
             .inventory
             .iter()
-            .position(|it| matches!(it.kind, ItemKind::Heal(_)))
-        {
+            .position(|it| matches!(it.kind, ItemKind::Heal(_) | ItemKind::Potion(_)));
+        if let Some(i) = pos {
             let item = self.inventory.remove(i);
-            if let ItemKind::Heal(amount) = item.kind {
-                let mut s = self.world.get::<&mut Stats>(self.player).unwrap();
-                s.hp = (s.hp + amount).min(s.max_hp);
-                drop(s);
-                self.log(format!("You quaff {} and feel better.", item.name));
+            let name = item.name.clone();
+            match item.kind {
+                ItemKind::Heal(amount) => {
+                    let mut s = self.world.get::<&mut Stats>(self.player).unwrap();
+                    s.hp = (s.hp + amount).min(s.max_hp);
+                    drop(s);
+                    self.log(format!("You quaff {name} and feel better."));
+                }
+                ItemKind::Potion(kind) => {
+                    self.log(format!("You quaff the {name}."));
+                    self.apply_potion(kind);
+                }
+                _ => {}
             }
             true
         } else {
-            self.log("You have no healing potions.");
+            self.log("You have no potions.");
             false
+        }
+    }
+
+    fn apply_potion(&mut self, kind: PotionKind) {
+        match kind {
+            PotionKind::Healing => {
+                let heal = self.rng.roll(2, 8) + 2;
+                let mut s = self.world.get::<&mut Stats>(self.player).unwrap();
+                s.hp = (s.hp + heal).min(s.max_hp);
+                drop(s);
+                self.log("You feel better.");
+            }
+            PotionKind::ExtraHealing => {
+                let heal = self.rng.roll(3, 8) + 6;
+                let mut s = self.world.get::<&mut Stats>(self.player).unwrap();
+                s.hp = (s.hp + heal).min(s.max_hp);
+                drop(s);
+                self.log("You feel much better.");
+            }
+            PotionKind::Poison => {
+                self.apply_status("poisoned", 10);
+                self.log("You feel very sick.");
+            }
+            PotionKind::GainStrength => {
+                let mut s = self.world.get::<&mut Stats>(self.player).unwrap();
+                s.strength += 1;
+                drop(s);
+                self.log("You feel stronger.");
+            }
+            PotionKind::RestoreStrength => {
+                self.apply_status("restore", 1);
+            }
+            PotionKind::SeeInvisible => {
+                self.apply_status("haste", 1);
+                self.log("Your eyes tingle.");
+            }
+            PotionKind::Confusion => {
+                self.apply_status("confused", 20);
+            }
+            PotionKind::Blindness => {
+                self.apply_status("blind", 30);
+            }
+            PotionKind::Hallucination => {
+                self.log("Oh wow! Everything seems so cosmic!");
+            }
+            PotionKind::HasteSelf => {
+                self.apply_status("haste", 20);
+            }
+            PotionKind::RaiseLevel => {
+                let mut s = self.world.get::<&mut Stats>(self.player).unwrap();
+                s.level += 1;
+                drop(s);
+                self.log("You feel more experienced.");
+            }
+            PotionKind::MonsterDetection => {
+                self.log("You sense the presence of monsters.");
+            }
+            PotionKind::MagicDetection => {
+                self.log("You sense the presence of magic.");
+            }
+            PotionKind::Levitation => {
+                self.log("You float up into the air.");
+            }
+            PotionKind::Unknown => {
+                self.log("Nothing seems to happen.");
+            }
         }
     }
 
@@ -1325,6 +1390,7 @@ impl Game {
                 let label = (b'a' + i as u8) as char;
                 let category = match item.kind {
                     ItemKind::Heal(_) => "potion",
+                    ItemKind::Potion(_) => "potion",
                     ItemKind::Scroll(_) => "scroll",
                     ItemKind::Food => "food",
                     ItemKind::Weapon { .. } => "weapon",
@@ -1762,6 +1828,41 @@ fn scroll_kind_from_name(name: &str) -> ScrollKind {
     }
 }
 
+fn potion_kind_from_name(name: &str) -> PotionKind {
+    let n = name.to_ascii_lowercase();
+    if n.contains("extra healing") {
+        PotionKind::ExtraHealing
+    } else if n.contains("healing") {
+        PotionKind::Healing
+    } else if n.contains("poison") {
+        PotionKind::Poison
+    } else if n.contains("gain strength") {
+        PotionKind::GainStrength
+    } else if n.contains("restore strength") {
+        PotionKind::RestoreStrength
+    } else if n.contains("see invisible") {
+        PotionKind::SeeInvisible
+    } else if n.contains("confusion") {
+        PotionKind::Confusion
+    } else if n.contains("blindness") {
+        PotionKind::Blindness
+    } else if n.contains("hallucination") {
+        PotionKind::Hallucination
+    } else if n.contains("haste self") {
+        PotionKind::HasteSelf
+    } else if n.contains("raise level") {
+        PotionKind::RaiseLevel
+    } else if n.contains("monster detection") {
+        PotionKind::MonsterDetection
+    } else if n.contains("magic detection") {
+        PotionKind::MagicDetection
+    } else if n.contains("levitation") {
+        PotionKind::Levitation
+    } else {
+        PotionKind::Unknown
+    }
+}
+
 fn ring_kind_from_name(name: &str) -> RingKind {
     let n = name.to_ascii_lowercase();
     if n.contains("protection") {
@@ -1834,6 +1935,7 @@ fn tile_render(t: TileKind) -> (char, (u8, u8, u8)) {
 fn item_render(item: &Item) -> Renderable {
     let (glyph, color) = match item.kind {
         ItemKind::Heal(_) => ('!', (255, 0, 255)),
+        ItemKind::Potion(_) => ('!', (255, 0, 255)),
         ItemKind::Food => (':', (200, 160, 80)),
         ItemKind::Weapon { .. } => (')', (180, 180, 220)),
         ItemKind::Armor(_) => ('[', (150, 150, 200)),
@@ -2088,6 +2190,32 @@ mod tests {
             .count();
         // With radius=1 only the 3x3 area around the player (max 9 tiles) is visible
         assert!(visible_count <= 9, "blind radius should be very small, got {visible_count}");
+    }
+
+    #[test]
+    fn quaff_healing_potion_restores_hp() {
+        let mut g = Game::new();
+        g.mode = Mode::Playing;
+        // Damage the player first
+        {
+            let mut s = g.world.get::<&mut Stats>(g.player).unwrap();
+            s.hp = s.max_hp - 10;
+        }
+        let hp_before = {
+            let s = g.world.get::<&Stats>(g.player).unwrap();
+            s.hp
+        };
+        // Give player a healing potion
+        g.inventory.push(Item {
+            name: "potion of healing".to_string(),
+            kind: ItemKind::Potion(PotionKind::Healing),
+        });
+        g.quaff();
+        let hp_after = {
+            let s = g.world.get::<&Stats>(g.player).unwrap();
+            s.hp
+        };
+        assert!(hp_after > hp_before, "healing potion should restore HP");
     }
 }
 
