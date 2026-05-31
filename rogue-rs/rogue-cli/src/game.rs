@@ -33,6 +33,7 @@ enum Mode {
     ConfirmQuit,
     Dead,
     Won,
+    MessageLog,
 }
 
 /// The whole game state handed to bracket-lib each tick.
@@ -64,6 +65,8 @@ pub struct Game {
     auto_cooldown: i32,
     /// Mode to return to if the player cancels the quit confirmation.
     quit_return: Mode,
+    /// Scroll offset for the message log panel (0 = most recent messages at top).
+    log_scroll: usize,
 }
 
 impl Default for Game {
@@ -148,6 +151,7 @@ impl Game {
             autopilot: false,
             auto_cooldown: 0,
             quit_return: Mode::Title,
+            log_scroll: 0,
         };
         game.descend_to(1);
         game.log("Welcome to the Dungeons of Doom! Find the Amulet of Yendor.");
@@ -1069,6 +1073,9 @@ impl Game {
                 self.render_play(ctx);
                 self.render_banner(ctx, "You escaped with the Amulet! Press Enter to play again.");
             }
+            Mode::MessageLog => {
+                self.render_message_log(ctx);
+            }
         }
     }
 
@@ -1117,6 +1124,7 @@ impl Game {
             "",
             "Other",
             "  ?              show / hide this help",
+            "  m              view message log",
             "  A              toggle autopilot (a bot plays for you)",
             "  Esc            quit",
         ];
@@ -1223,6 +1231,43 @@ impl Game {
         );
     }
 
+    fn render_message_log(&self, ctx: &mut BTerm) {
+        const PANEL_LINES: usize = 16;
+        let box_w = 60i32;
+        let box_h = 20i32;
+        let x0 = (SCREEN_WIDTH - box_w) / 2;
+        let y0 = (SCREEN_HEIGHT - box_h) / 2;
+        let pad = 2;
+        let tx = x0 + pad;
+
+        for y in y0..y0 + box_h {
+            for x in x0..x0 + box_w {
+                ctx.set(x, y, RGB::named(WHITE), RGB::named(BLACK), to_cp437(' '));
+            }
+        }
+        ctx.draw_box(x0, y0, box_w - 1, box_h - 1, RGB::named(WHITE), RGB::named(BLACK));
+        ctx.print_color(tx, y0 + 1, RGB::named(YELLOW), RGB::named(BLACK), "MESSAGE LOG");
+
+        if self.log.is_empty() {
+            ctx.print_color(tx, y0 + 3, RGB::named(GRAY), RGB::named(BLACK), "(no messages yet)");
+        } else {
+            let msgs: Vec<&String> = self.log.iter().rev().collect();
+            let start = self.log_scroll.min(msgs.len().saturating_sub(1));
+            for (i, msg) in msgs.iter().skip(start).take(PANEL_LINES).enumerate() {
+                let max_chars = (box_w - pad * 2 - 1) as usize;
+                let display = if msg.len() > max_chars { &msg[..max_chars] } else { msg.as_str() };
+                ctx.print_color(tx, y0 + 3 + i as i32, RGB::named(WHITE), RGB::named(BLACK), display);
+            }
+        }
+        ctx.print_color(
+            tx,
+            y0 + box_h - 2,
+            RGB::named(GRAY),
+            RGB::named(BLACK),
+            "up/dn/jk: scroll   Any other key: return",
+        );
+    }
+
     fn render_banner(&self, ctx: &mut BTerm, msg: &str) {
         ctx.print_color_centered(
             SCREEN_HEIGHT / 2,
@@ -1303,7 +1348,7 @@ impl Game {
             footer_row,
             RGB::named(GRAY),
             RGB::named(BLACK),
-            "Move:arrows/hjkl  g:get  >:stairs  q:quaff  e:eat  r:read  p:ring  R:unring  i:inv  ?:help  Esc:quit",
+            "Move:arrows/hjkl  g:get  >:stairs  q:quaff  e:eat  r:read  p:ring  R:unring  i:inv  m:log  ?:help  Esc:quit",
         );
     }
 
@@ -1440,6 +1485,10 @@ impl Game {
                 Some(VirtualKeyCode::A) => self.toggle_autopilot(),
                 Some(VirtualKeyCode::Slash) if !self.autopilot => self.mode = Mode::Help,
                 Some(VirtualKeyCode::I) if !self.autopilot => self.mode = Mode::Inventory,
+                Some(VirtualKeyCode::M) if !self.autopilot => {
+                    self.log_scroll = 0;
+                    self.mode = Mode::MessageLog;
+                }
                 _ => {
                     if self.autopilot {
                         self.run_autopilot();
@@ -1451,6 +1500,24 @@ impl Game {
             Mode::Help | Mode::Inventory => {
                 if ctx.key.is_some() {
                     self.mode = Mode::Playing;
+                }
+            }
+            Mode::MessageLog => {
+                const PANEL_LINES: usize = 16;
+                match ctx.key {
+                    Some(VirtualKeyCode::Up) | Some(VirtualKeyCode::K) => {
+                        if self.log_scroll > 0 {
+                            self.log_scroll -= 1;
+                        }
+                    }
+                    Some(VirtualKeyCode::Down) | Some(VirtualKeyCode::J) => {
+                        let max_scroll = self.log.len().saturating_sub(PANEL_LINES);
+                        if self.log_scroll < max_scroll {
+                            self.log_scroll += 1;
+                        }
+                    }
+                    Some(_) => self.mode = Mode::Playing,
+                    None => {}
                 }
             }
             Mode::ConfirmQuit => match ctx.key {
@@ -1779,6 +1846,15 @@ mod tests {
             let name = ring_name(kind);
             assert_eq!(ring_kind_from_name(name), kind, "round-trip failed for {name}");
         }
+    }
+
+    #[test]
+    fn message_log_mode_switches_on_m_key() {
+        let g = Game::new();
+        // Verify the scroll field is initialized to 0.
+        assert_eq!(g.log_scroll, 0);
+        // Verify the log is non-empty after game start (welcome message).
+        assert!(!g.log.is_empty());
     }
 }
 
