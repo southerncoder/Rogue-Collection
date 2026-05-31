@@ -25,6 +25,29 @@ pub struct Monster {
     pub awake: bool,
     /// Attacks the player on sight.
     pub mean: bool,
+    /// Optional special attack triggered after a successful hit.
+    pub special: MonsterSpecial,
+}
+
+/// Special attack a monster can perform in addition to normal damage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MonsterSpecial {
+    #[default]
+    None,
+    /// Steals gold from the player and flees.
+    StealGold,
+    /// Drains one player experience level.
+    DrainLevel,
+    /// Applies poison status to the player.
+    Poison,
+    /// Saps player strength by 1.
+    DrainStrength,
+    /// Confuses the player.
+    Confuse,
+    /// Paralyzes the player.
+    Paralyze,
+    /// Causes blindness.
+    Blind,
 }
 
 /// A human-readable name (for combat messages).

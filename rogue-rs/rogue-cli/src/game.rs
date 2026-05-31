@@ -275,6 +275,7 @@ impl Game {
             .flags
             .iter()
             .any(|f| matches!(f, rogue_core::data::MonsterFlag::Mean));
+        let special = monster_special_from_symbol(def.symbol);
         self.world.spawn((
             Position(pos),
             Renderable {
@@ -284,6 +285,7 @@ impl Game {
             Monster {
                 awake: false,
                 mean,
+                special,
             },
             Name(def.name.clone()),
             Stats {
@@ -1243,14 +1245,68 @@ impl Game {
             }
         };
         let name = self.world.get::<&Name>(attacker_e).unwrap().0.clone();
+        let special = self
+            .world
+            .get::<&Monster>(attacker_e)
+            .map(|m| m.special)
+            .unwrap_or(MonsterSpecial::None);
         // Protection ring lowers effective AC (lower = better in Rogue).
         let def_arm = self.world.get::<&Stats>(self.player).unwrap().armor - self.ring_armor_bonus();
         match roll_attack(&attacker, def_arm, &mut self.rng) {
             Some(dmg) => {
                 self.damage_player(dmg);
                 self.log(format!("The {name} hits you for {dmg}."));
+                self.apply_monster_special(&name, special);
             }
             None => self.log(format!("The {name} misses you.")),
+        }
+    }
+
+    fn apply_monster_special(&mut self, monster_name: &str, special: MonsterSpecial) {
+        match special {
+            MonsterSpecial::None => {}
+            MonsterSpecial::Poison => {
+                self.apply_status("poisoned", 10);
+                self.log(format!("The {monster_name}'s bite is venomous!"));
+            }
+            MonsterSpecial::Confuse => {
+                self.apply_status("confused", 20);
+                self.log(format!("The {monster_name} has confused you!"));
+            }
+            MonsterSpecial::Paralyze => {
+                self.apply_status("paralyzed", 10);
+                self.log(format!("You are paralyzed by the {monster_name}!"));
+            }
+            MonsterSpecial::Blind => {
+                self.apply_status("blind", 30);
+                self.log(format!("The {monster_name} has blinded you!"));
+            }
+            MonsterSpecial::DrainLevel => {
+                let new_level = {
+                    let mut s = self.world.get::<&mut Stats>(self.player).unwrap();
+                    s.level = (s.level - 1).max(1);
+                    s.level
+                };
+                self.log(format!(
+                    "The {monster_name} drains your life force! (level {new_level})"
+                ));
+            }
+            MonsterSpecial::DrainStrength => {
+                {
+                    let mut s = self.world.get::<&mut Stats>(self.player).unwrap();
+                    s.strength = (s.strength - 1).max(1);
+                }
+                self.log(format!("The {monster_name} saps your strength!"));
+            }
+            MonsterSpecial::StealGold => {
+                let stolen = self.gold;
+                self.gold = 0;
+                if stolen > 0 {
+                    self.log(format!("The {monster_name} steals {stolen} gold and vanishes!"));
+                } else {
+                    self.log(format!("The {monster_name} finds nothing to steal."));
+                }
+            }
         }
     }
 
@@ -2136,6 +2192,21 @@ fn wand_kind_from_name(name: &str) -> WandKind {
     }
 }
 
+/// Assign a special attack based on the monster's ASCII symbol (classic Rogue mapping).
+fn monster_special_from_symbol(symbol: char) -> MonsterSpecial {
+    match symbol {
+        'L' => MonsterSpecial::StealGold,  // Leprechaun
+        'N' => MonsterSpecial::StealGold,  // Nymph
+        'V' => MonsterSpecial::DrainLevel, // Vampire
+        'W' => MonsterSpecial::DrainLevel, // Wraith
+        'S' | 's' => MonsterSpecial::Poison,      // Snake / Spider
+        'P' => MonsterSpecial::Paralyze,   // Phantom
+        'M' => MonsterSpecial::Confuse,    // Medusa
+        'Q' => MonsterSpecial::DrainStrength, // Quasit
+        _ => MonsterSpecial::None,
+    }
+}
+
 fn ring_kind_from_name(name: &str) -> RingKind {
     let n = name.to_ascii_lowercase();
     if n.contains("protection") {
@@ -2512,6 +2583,36 @@ mod tests {
             }
         }).expect("wand should still be in inventory");
         assert_eq!(charges, 4, "one charge should have been consumed");
+    }
+
+    #[test]
+    fn monster_special_poison_applies_poisoned_status() {
+        let mut g = Game::new();
+        g.mode = Mode::Playing;
+        g.apply_monster_special("snake", MonsterSpecial::Poison);
+        assert!(
+            g.status.poisoned > 0,
+            "player should be poisoned after snake bite"
+        );
+    }
+
+    #[test]
+    fn monster_special_drain_level_reduces_player_level() {
+        let mut g = Game::new();
+        g.mode = Mode::Playing;
+        let before = g.world.get::<&Stats>(g.player).unwrap().level;
+        g.apply_monster_special("wraith", MonsterSpecial::DrainLevel);
+        let after = g.world.get::<&Stats>(g.player).unwrap().level;
+        assert_eq!(after, (before - 1).max(1), "level should drop by one");
+    }
+
+    #[test]
+    fn monster_special_steal_gold_removes_gold() {
+        let mut g = Game::new();
+        g.mode = Mode::Playing;
+        g.gold = 50;
+        g.apply_monster_special("leprechaun", MonsterSpecial::StealGold);
+        assert_eq!(g.gold, 0, "all gold should have been stolen");
     }
 }
 
