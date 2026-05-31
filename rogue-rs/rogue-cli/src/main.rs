@@ -2,10 +2,7 @@
 
 use bracket_lib::prelude::*;
 
-mod components;
-mod game;
-
-use game::{Game, SCREEN_HEIGHT, SCREEN_WIDTH};
+use rogue_cli::game::{Game, SCREEN_HEIGHT, SCREEN_WIDTH};
 
 fn main() -> BError {
     // The default 8x8 font makes the window tiny on modern displays. Render each
@@ -16,5 +13,11 @@ fn main() -> BError {
         .with_tile_dimensions(16, 16)
         .with_dimensions(SCREEN_WIDTH, SCREEN_HEIGHT)
         .build()?;
-    main_loop(context, Game::new())
+
+    let mut game = Game::new();
+    // `--demo` boots straight into a watchable autopilot run.
+    if std::env::args().any(|a| a == "--demo") {
+        game.start_demo();
+    }
+    main_loop(context, game)
 }

@@ -184,6 +184,68 @@ impl Map {
         self.rooms.iter().position(|r| r.contains(p))
     }
 
+    /// Walkable 8-directional neighbours of `p`.
+    fn walk_neighbors(&self, p: Point) -> Vec<Point> {
+        const DIRS: [(i32, i32); 8] = [
+            (1, 0),
+            (-1, 0),
+            (0, 1),
+            (0, -1),
+            (1, 1),
+            (1, -1),
+            (-1, 1),
+            (-1, -1),
+        ];
+        DIRS.iter()
+            .map(|&(dx, dy)| p + Point::new(dx, dy))
+            .filter(|&q| self.is_walkable(q))
+            .collect()
+    }
+
+    /// Breadth-first shortest path from `from` to `to` over walkable tiles
+    /// (8-directional movement, matching the game). Returns the sequence of
+    /// steps *excluding* `from` (so the last element is `to`), or `None` if
+    /// `to` is unreachable.
+    pub fn find_path(&self, from: Point, to: Point) -> Option<Vec<Point>> {
+        if from == to {
+            return Some(Vec::new());
+        }
+        if !self.is_walkable(to) {
+            return None;
+        }
+        use std::collections::HashMap;
+        use std::collections::VecDeque;
+        let mut prev: HashMap<Point, Point> = HashMap::new();
+        let mut queue: VecDeque<Point> = VecDeque::new();
+        prev.insert(from, from);
+        queue.push_back(from);
+        while let Some(cur) = queue.pop_front() {
+            for n in self.walk_neighbors(cur) {
+                if prev.contains_key(&n) {
+                    continue;
+                }
+                prev.insert(n, cur);
+                if n == to {
+                    let mut path = vec![to];
+                    let mut step = cur;
+                    while step != from {
+                        path.push(step);
+                        step = prev[&step];
+                    }
+                    path.reverse();
+                    return Some(path);
+                }
+                queue.push_back(n);
+            }
+        }
+        None
+    }
+
+    /// Is `to` reachable from `from` over walkable tiles?
+    pub fn reachable(&self, from: Point, to: Point) -> bool {
+        self.find_path(from, to).is_some()
+    }
+
     /// Render the tile layer to a string (handy for tests / debugging).
     pub fn to_ascii(&self) -> String {
         let mut s = String::with_capacity(((self.width + 1) * self.height) as usize);

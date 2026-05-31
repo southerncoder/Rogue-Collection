@@ -19,7 +19,8 @@ It is built to be two things at once:
 ```bash
 cd rogue-rs
 cargo run            # play
-cargo test           # run the test suite
+cargo run -- --demo  # watch the autopilot bot play itself
+cargo test           # run the test suite (incl. the bot playthrough)
 cargo clippy         # lints
 ```
 
@@ -42,8 +43,15 @@ Requires a recent stable Rust toolchain and an OpenGL‑capable display
 | Quaff healing     | `q`                                              |
 | Eat food          | `e`                                              |
 | Show help         | `?` (any key closes it)                          |
+| Autopilot bot     | `A` (toggle — a pathfinding bot plays for you)   |
 | Start / restart   | `Enter`                                          |
 | Quit              | `Esc`                                            |
+
+**Watch the bot play.** Press `A` in game (or launch with `cargo run -- --demo`)
+to hand control to a pathfinding autopilot. It routes to the down‑stairs each
+level (fighting anything in the way) and grabs the Amulet when it reaches it —
+handy for demoing or sanity‑checking that a level is actually completable. The
+status line shows `[AUTO]` while it's driving; press `A` again to take over.
 
 **Goal:** descend to the Amulet of Yendor (level 26), pick it up, and win.
 Watch your **HP**, manage **hunger** (eat before you starve), and pick your
@@ -194,10 +202,14 @@ cargo test     # rogue-core unit tests + rogue-cli gameplay smoke tests
 Highlights:
 
 - Every probability table is validated to sum to 100.
-- Generated levels are flood‑filled to prove the stairs are always reachable
-  from the player start (20 seeds).
+- Generated **and hand‑authored** levels are flood‑filled to prove the stairs
+  (and every authored monster/item/gold spawn) are reachable from the player
+  start — a quality gate that catches off‑by‑one corridors and disconnected
+  rooms (20 procedural seeds + the example dungeon's first 8 levels).
 - The example dungeon (incl. fixed levels) parses, resolves and builds.
-- Headless gameplay tests step many turns without a renderer.
+- A headless **autopilot bot** plays the real dungeon end‑to‑end: one test
+  proves it can descend from the first level, another that it pushes several
+  levels deep. (See `rogue-cli/tests/bot_playthrough.rs`.)
 
 ---
 

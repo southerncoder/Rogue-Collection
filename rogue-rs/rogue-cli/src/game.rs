@@ -20,6 +20,8 @@ pub const SCREEN_HEIGHT: i32 = 28;
 const MAP_TOP: i32 = 1; // map is drawn starting at this screen row
 const MSG_ROW: i32 = 0;
 const MAX_LOG: usize = 200;
+/// Frames between autopilot steps (~10 steps/sec at 60 FPS) so it's watchable.
+const AUTO_PERIOD: i32 = 6;
 
 /// Current high-level game phase.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,19 +50,44 @@ pub struct Game {
     monster_order: Vec<usize>,
     log: Vec<String>,
     mode: Mode,
+    /// When true, a pathfinding bot plays the game (watchable demo / tests).
+    autopilot: bool,
+    /// Frames remaining before the autopilot takes its next step (throttle).
+    auto_cooldown: i32,
+}
+
+impl Default for Game {
+    fn default() -> Self {
+        Game::new()
+    }
 }
 
 impl Game {
     pub fn new() -> Game {
-        let data = GameData::bundled().expect("bundled game data must parse");
         // Prefer on-disk assets (so editing dungeon.ron / levels takes effect),
         // falling back to a purely procedural dungeon if they are absent.
         let dungeon = Dungeon::load("assets").unwrap_or_else(|| Dungeon::default_procedural(26));
+        Game::with_dungeon(dungeon)
+    }
+
+    /// Build a game on an explicit dungeon. Used by `new` and by tests that
+    /// load a specific dungeon directory.
+    pub fn with_dungeon(dungeon: Dungeon) -> Game {
+        Game::assemble(dungeon, StdRng::from_entropy())
+    }
+
+    /// Build a game on an explicit dungeon with a fixed RNG seed — gives
+    /// deterministic level layouts and combat, used by integration tests.
+    pub fn with_dungeon_seeded(dungeon: Dungeon, seed: u64) -> Game {
+        Game::assemble(dungeon, StdRng::seed_from_u64(seed))
+    }
+
+    fn assemble(dungeon: Dungeon, rng: StdRng) -> Game {
+        let data = GameData::bundled().expect("bundled game data must parse");
 
         let mut monster_order: Vec<usize> = (0..data.monsters.len()).collect();
         monster_order.sort_by_key(|&i| data.monsters[i].experience);
 
-        let rng = StdRng::from_entropy();
         let mut world = World::new();
 
         // Create the player up front; stats persist across levels.
@@ -105,6 +132,8 @@ impl Game {
             monster_order,
             log: Vec::new(),
             mode: Mode::Title,
+            autopilot: false,
+            auto_cooldown: 0,
         };
         game.descend_to(1);
         game.log("Welcome to the Dungeons of Doom! Find the Amulet of Yendor.");
@@ -718,13 +747,29 @@ impl Game {
     fn recompute_visibility(&mut self) {
         self.map.clear_visible();
         let p = self.player_pos();
-        // The player always sees their immediate surroundings.
+        const RADIUS: i32 = 8;
+
+        // Raycast field of view: for every tile within the radius, trace a line
+        // from the player and reveal tiles until (and including) the first
+        // opaque one. This lets the player see down corridors and across rooms.
+        for dy in -RADIUS..=RADIUS {
+            for dx in -RADIUS..=RADIUS {
+                if dx * dx + dy * dy > RADIUS * RADIUS {
+                    continue;
+                }
+                self.reveal_line(p, p + Point::new(dx, dy));
+            }
+        }
+
+        // Always see the immediate ring (covers diagonal corners cleanly).
         for dy in -1..=1 {
             for dx in -1..=1 {
                 self.map.set_visible(p + Point::new(dx, dy));
             }
         }
-        // Standing in a lit room reveals the whole room (walls included).
+
+        // Standing in a lit (non-dark) room reveals the whole room at once,
+        // walls included — the classic Rogue "the room lights up" behaviour.
         if let Some(ri) = self.map.room_at(p) {
             if !self.map.is_dark(p) {
                 let r = self.map.rooms[ri];
@@ -733,6 +778,37 @@ impl Game {
                         self.map.set_visible(Point::new(x, y));
                     }
                 }
+            }
+        }
+    }
+
+    /// Reveal tiles along a Bresenham line from `from` to `to`, stopping after
+    /// the first opaque tile (which is itself revealed, so walls are seen).
+    fn reveal_line(&mut self, from: Point, to: Point) {
+        let (mut x0, mut y0) = (from.x, from.y);
+        let (x1, y1) = (to.x, to.y);
+        let dx = (x1 - x0).abs();
+        let sx = if x0 < x1 { 1 } else { -1 };
+        let dy = -(y1 - y0).abs();
+        let sy = if y0 < y1 { 1 } else { -1 };
+        let mut err = dx + dy;
+        loop {
+            let q = Point::new(x0, y0);
+            self.map.set_visible(q);
+            if (x0, y0) == (x1, y1) {
+                break;
+            }
+            if q != from && self.map.is_opaque(q) {
+                break;
+            }
+            let e2 = 2 * err;
+            if e2 >= dy {
+                err += dy;
+                x0 += sx;
+            }
+            if e2 <= dx {
+                err += dx;
+                y0 += sy;
             }
         }
     }
@@ -765,7 +841,7 @@ impl Game {
         ctx.print_centered(13, "Press Enter to begin");
         ctx.print_centered(15, "Move: hjkl / yubn / arrows   Wait: .   Descend: >");
         ctx.print_centered(16, "Pick up: g   Quaff: q   Eat: e   Quit: Esc");
-        ctx.print_centered(18, "Press ? in game for help");
+        ctx.print_centered(18, "Press ? in game for help   ·   A = autopilot bot");
     }
 
     fn render_help(&self, ctx: &mut BTerm) {
@@ -786,6 +862,7 @@ impl Game {
             "",
             "Other",
             "  ?              show / hide this help",
+            "  A              toggle autopilot (a bot plays for you)",
             "  Esc            quit",
             "",
             "Press any key to return to the game.",
@@ -856,11 +933,107 @@ impl Game {
             ""
         };
         let row = self.map.height + MAP_TOP;
+        let auto = if self.autopilot { "  [AUTO]" } else { "" };
         let line = format!(
-            "Level:{}  HP:{}/{}  Str:{}  Arm:{}  Gold:{}  Exp:{}  Depth:{}  {}",
-            s.level, s.hp, s.max_hp, s.strength, s.armor, self.gold, s.xp_reward, self.depth, hunger
+            "Level:{}  HP:{}/{}  Str:{}  Arm:{}  Gold:{}  Exp:{}  Depth:{}  {}{}",
+            s.level, s.hp, s.max_hp, s.strength, s.armor, self.gold, s.xp_reward, self.depth, hunger, auto
         );
         ctx.print(0, row, line);
+    }
+
+    // --- Autopilot bot ------------------------------------------------------
+
+    /// Where the bot wants to go on this level: the Amulet if it is here,
+    /// otherwise the down staircase.
+    fn auto_target(&self) -> Option<Point> {
+        for (_e, (pos, item)) in self.world.query::<(&Position, &Item)>().iter() {
+            if matches!(item.kind, ItemKind::Amulet) {
+                return Some(pos.0);
+            }
+        }
+        self.map.stairs_down
+    }
+
+    /// Take a single bot action: descend/pick up if on the target, else step
+    /// one tile along the shortest path toward it (bumping any monster in the
+    /// way). Returns true if a turn was consumed.
+    pub fn auto_step(&mut self) -> bool {
+        let here = self.player_pos();
+        let Some(target) = self.auto_target() else {
+            return false;
+        };
+        if here == target {
+            if self.map.tile(here) == TileKind::StairsDown {
+                return self.try_descend();
+            }
+            return self.pickup();
+        }
+        let Some(path) = self.map.find_path(here, target) else {
+            return false;
+        };
+        let Some(&next) = path.first() else {
+            return false;
+        };
+        self.try_move(Point::new(next.x - here.x, next.y - here.y))
+    }
+
+    /// Run one full autopilot turn (bot action + world response). Returns true
+    /// if the bot acted. Intended for headless tests / scripted demos.
+    pub fn auto_turn(&mut self) -> bool {
+        let acted = self.auto_step();
+        if acted && self.mode == Mode::Playing {
+            self.end_player_turn();
+        }
+        acted
+    }
+
+    /// Advance the watchable autopilot, throttled so a human can follow along.
+    fn run_autopilot(&mut self) {
+        if self.auto_cooldown > 0 {
+            self.auto_cooldown -= 1;
+            return;
+        }
+        self.auto_cooldown = AUTO_PERIOD;
+        if !self.auto_turn() {
+            self.autopilot = false;
+            self.log("Autopilot stopped (no path to the stairs).");
+        }
+    }
+
+    /// Toggle the autopilot bot on/off (bound to the `A` key in game).
+    pub fn toggle_autopilot(&mut self) {
+        self.autopilot = !self.autopilot;
+        self.auto_cooldown = 0;
+        if self.autopilot {
+            self.log("Autopilot engaged — watch the bot descend. Press A to stop.");
+        } else {
+            self.log("Autopilot disengaged.");
+        }
+    }
+
+    /// Start the game straight into a watchable autopilot run (CLI `--demo`).
+    pub fn start_demo(&mut self) {
+        self.mode = Mode::Playing;
+        self.autopilot = true;
+        self.auto_cooldown = 0;
+        self.log("Demo mode: autopilot is driving. Press A to take control.");
+    }
+
+    /// Read-only accessors used by integration tests.
+    pub fn depth(&self) -> i32 {
+        self.depth
+    }
+
+    pub fn is_won(&self) -> bool {
+        self.mode == Mode::Won
+    }
+
+    pub fn is_dead(&self) -> bool {
+        self.mode == Mode::Dead
+    }
+
+    pub fn begin_playing(&mut self) {
+        self.mode = Mode::Playing;
     }
 
     // --- Top-level tick -----------------------------------------------------
@@ -874,15 +1047,18 @@ impl Game {
                     ctx.quitting = true;
                 }
             }
-            Mode::Playing => {
-                if ctx.key == Some(VirtualKeyCode::Escape) {
-                    ctx.quitting = true;
-                } else if ctx.key == Some(VirtualKeyCode::Slash) {
-                    self.mode = Mode::Help;
-                } else {
-                    self.handle_key(ctx);
+            Mode::Playing => match ctx.key {
+                Some(VirtualKeyCode::Escape) => ctx.quitting = true,
+                Some(VirtualKeyCode::A) => self.toggle_autopilot(),
+                Some(VirtualKeyCode::Slash) if !self.autopilot => self.mode = Mode::Help,
+                _ => {
+                    if self.autopilot {
+                        self.run_autopilot();
+                    } else {
+                        self.handle_key(ctx);
+                    }
                 }
-            }
+            },
             Mode::Help => {
                 if ctx.key.is_some() {
                     self.mode = Mode::Playing;

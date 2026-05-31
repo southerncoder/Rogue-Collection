@@ -96,7 +96,41 @@ mod tests {
             let map = dungeon.build_level(depth, &cfg, &mut rng);
             assert!(map.stairs_down.is_some(), "depth {depth} has no stairs");
             assert!(map.is_walkable(map.player_start));
+            // Quality gate: the stairs must be reachable from the start, or the
+            // level is unwinnable (the bug the player hit on level 1).
+            assert!(
+                map.reachable(map.player_start, map.stairs_down.unwrap()),
+                "depth {depth}: stairs unreachable from player start"
+            );
         }
+    }
+
+    #[test]
+    fn fixed_entrance_is_fully_connected() {
+        // Every authored thing (monsters, gold, items) and the stairs must be
+        // reachable from the player start — guards against off-by-one corridors.
+        let cfg = GameData::bundled().unwrap().config;
+        let text = std::fs::read_to_string(assets_dir().join("levels/entrance.ron")).unwrap();
+        let LevelDef::Fixed(level) = ron::from_str::<LevelDef>(&text).unwrap() else {
+            panic!("entrance should be a fixed level");
+        };
+        let mut rng = StdRng::seed_from_u64(7);
+        let map = load_fixed(&level, &cfg, 1, &mut rng);
+        let start = map.player_start;
+        assert!(
+            map.reachable(start, map.stairs_down.unwrap()),
+            "stairs unreachable from start"
+        );
+        for s in &map.spawns {
+            assert!(
+                map.reachable(start, s.pos),
+                "authored spawn at {:?} ({:?}) is unreachable",
+                s.pos,
+                s.kind
+            );
+        }
+        // Rooms should have been detected for whole-room lighting.
+        assert!(map.rooms.len() >= 3, "expected detected rooms, got {}", map.rooms.len());
     }
 
     #[test]
