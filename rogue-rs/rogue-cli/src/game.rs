@@ -182,7 +182,14 @@ impl Game {
             match s.kind {
                 SpawnKind::Monster(glyph) => self.spawn_monster(s.pos, glyph),
                 SpawnKind::Gold(v) => {
-                    self.world.spawn((Position(s.pos), GoldPile(v)));
+                    self.world.spawn((
+                        Position(s.pos),
+                        GoldPile(v),
+                        Renderable {
+                            glyph: '$',
+                            color: (255, 215, 0),
+                        },
+                    ));
                 }
                 SpawnKind::Item => {
                     let item = self.roll_item();

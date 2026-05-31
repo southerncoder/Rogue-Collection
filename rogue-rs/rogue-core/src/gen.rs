@@ -134,23 +134,51 @@ mod tests {
     }
 
     #[test]
-    fn fixed_entrance_has_player_stairs_and_monsters() {
+    fn fixed_levels_have_uniform_row_widths() {
+        // Ragged rows shift the right wall and trailing tiles off by one
+        // (the loader pads to the widest row), so every authored row in a
+        // fixed level must be exactly the same length.
+        for name in ["entrance.ron", "vault.ron"] {
+            let text = std::fs::read_to_string(assets_dir().join("levels").join(name)).unwrap();
+            let LevelDef::Fixed(level) = ron::from_str::<LevelDef>(&text).unwrap() else {
+                panic!("{name} should be a fixed level");
+            };
+            let width = level.rows.first().map(|r| r.chars().count()).unwrap_or(0);
+            for (i, row) in level.rows.iter().enumerate() {
+                assert_eq!(
+                    row.chars().count(),
+                    width,
+                    "{name} row {i} is {} wide, expected {width}",
+                    row.chars().count()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn fixed_vault_spawns_are_reachable() {
         let cfg = GameData::bundled().unwrap().config;
-        let text = std::fs::read_to_string(assets_dir().join("levels/entrance.ron")).unwrap();
-        let def: LevelDef = ron::from_str(&text).unwrap();
-        let LevelDef::Fixed(level) = def else {
-            panic!("entrance should be a fixed level");
+        let text = std::fs::read_to_string(assets_dir().join("levels/vault.ron")).unwrap();
+        let LevelDef::Fixed(level) = ron::from_str::<LevelDef>(&text).unwrap() else {
+            panic!("vault should be a fixed level");
         };
-        let mut rng = StdRng::seed_from_u64(1);
-        let map = load_fixed(&level, &cfg, 1, &mut rng);
-        assert!(map.stairs_down.is_some(), "entrance must have stairs");
-        assert_eq!(map.tile(map.player_start), crate::map::TileKind::Floor);
-        // K, B, H monsters plus gold and an item are authored in.
-        let monsters = map
+        let mut rng = StdRng::seed_from_u64(3);
+        let map = load_fixed(&level, &cfg, 2, &mut rng);
+        let start = map.player_start;
+        assert!(map.stairs_down.is_some(), "vault must have stairs");
+        let gold = map
             .spawns
             .iter()
-            .filter(|s| matches!(s.kind, crate::map::SpawnKind::Monster(_)))
+            .filter(|s| matches!(s.kind, crate::map::SpawnKind::Gold(_)))
             .count();
-        assert!(monsters >= 3, "expected authored monsters, got {monsters}");
+        assert!(gold >= 8, "expected authored gold piles, got {gold}");
+        for s in &map.spawns {
+            assert!(
+                map.reachable(start, s.pos),
+                "vault spawn at {:?} ({:?}) is unreachable",
+                s.pos,
+                s.kind
+            );
+        }
     }
 }
