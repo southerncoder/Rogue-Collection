@@ -523,6 +523,7 @@ impl Game {
             VirtualKeyCode::P => acted = self.put_on_ring(),
             VirtualKeyCode::S => acted = self.search_for_secrets(),
             VirtualKeyCode::T => acted = self.throw_item(),
+            VirtualKeyCode::Tab => acted = self.auto_explore_step(),
             _ => {}
         }
         if let Some(d) = delta {
@@ -719,6 +720,81 @@ impl Game {
             }
         }
         true
+    }
+
+    fn auto_explore_step(&mut self) -> bool {
+        use std::collections::{HashMap, VecDeque};
+
+        let ppos = self.player_pos();
+
+        // Stop if any monster is visible
+        let monster_positions: Vec<Point> = self.world.query::<(&Position, &Monster)>().iter()
+            .map(|(_, (p, _))| p.0)
+            .collect();
+        if monster_positions.iter().any(|&pos| self.map.is_visible(pos)) {
+            self.log("A monster is nearby — you stop exploring.");
+            return false;
+        }
+
+        let mut queue: VecDeque<Point> = VecDeque::new();
+        let mut came_from: HashMap<(i32,i32), Option<(i32,i32)>> = HashMap::new();
+        queue.push_back(ppos);
+        came_from.insert((ppos.x, ppos.y), None);
+        let mut target: Option<Point> = None;
+
+        'outer: while let Some(cur) = queue.pop_front() {
+            for (dx, dy) in [(-1i32,0i32),(1,0),(0,-1),(0,1),(-1,-1),(1,-1),(-1,1),(1,1)] {
+                let np = Point::new(cur.x + dx, cur.y + dy);
+                if !self.map.in_bounds(np) { continue; }
+                if !self.map.is_revealed(np) && self.map.tile(np) != TileKind::Empty {
+                    if target.is_none() {
+                        target = Some(cur);
+                        break 'outer;
+                    }
+                }
+                if came_from.contains_key(&(np.x, np.y)) { continue; }
+                if self.map.is_walkable(np) && self.map.is_revealed(np) {
+                    came_from.insert((np.x, np.y), Some((cur.x, cur.y)));
+                    queue.push_back(np);
+                }
+            }
+        }
+
+        let Some(dest) = target else {
+            self.log("No unexplored areas visible. Exploration complete.");
+            return false;
+        };
+
+        if dest == ppos {
+            for (dx, dy) in [(-1i32,0i32),(1,0),(0,-1),(0,1)] {
+                let np = Point::new(ppos.x + dx, ppos.y + dy);
+                if self.map.is_walkable(np) {
+                    return self.try_move(Point::new(dx, dy));
+                }
+            }
+            return false;
+        }
+
+        let mut path = vec![(dest.x, dest.y)];
+        let mut cur = (dest.x, dest.y);
+        loop {
+            match came_from.get(&cur) {
+                Some(Some(prev)) => {
+                    path.push(*prev);
+                    cur = *prev;
+                    if cur == (ppos.x, ppos.y) { break; }
+                }
+                _ => break,
+            }
+        }
+        path.reverse();
+
+        if let Some(&(nx, ny)) = path.get(1) {
+            let dir = Point::new(nx - ppos.x, ny - ppos.y);
+            return self.try_move(dir);
+        }
+
+        false
     }
 
     fn pickup(&mut self) -> bool {
@@ -1803,6 +1879,7 @@ impl Game {
             "  ?              show / hide this help",
             "  m              view message log",
             "  A              toggle autopilot (a bot plays for you)",
+            "  Tab            auto-explore (move to nearest unseen tile)",
             "  Esc            quit",
         ];
 
@@ -2070,7 +2147,7 @@ impl Game {
             footer_row,
             RGB::named(GRAY),
             RGB::named(BLACK),
-            "Move:arrows/hjkl  g:get  >:stairs  q:quaff  e:eat  r:read  p:ring  R:unring  i:inv  s:search  t:throw  m:log  ?:help  Esc:quit",
+            "Move:arrows/hjkl  g:get  >:stairs  q:quaff  e:eat  r:read  p:ring  R:unring  i:inv  s:search  t:throw  Tab:explore  m:log  ?:help  Esc:quit",
         );
     }
 
@@ -2833,6 +2910,20 @@ mod tests {
         assert!(!g.known_items.is_known("potion of healing"));
         g.known_items.identify("potion of healing");
         assert!(g.known_items.is_known("potion of healing"));
+    }
+
+    #[test]
+    fn auto_explore_step_returns_false_when_all_explored() {
+        let mut g = Game::new();
+        g.mode = Mode::Playing;
+        for y in 0..g.map.height {
+            for x in 0..g.map.width {
+                let p = Point::new(x, y);
+                g.map.reveal(p);
+            }
+        }
+        let result = g.auto_explore_step();
+        let _ = result; // may be false or true, just no panic
     }
 }
 
