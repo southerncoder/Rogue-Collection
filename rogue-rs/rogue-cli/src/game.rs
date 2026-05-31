@@ -751,7 +751,7 @@ impl Game {
     fn recompute_visibility(&mut self) {
         self.map.clear_visible();
         let p = self.player_pos();
-        const RADIUS: i32 = 8;
+        const RADIUS: i32 = 5;
 
         // Raycast field of view: for every tile within the radius, trace a line
         // from the player and reveal tiles until (and including) the first
@@ -769,19 +769,6 @@ impl Game {
         for dy in -1..=1 {
             for dx in -1..=1 {
                 self.map.set_visible(p + Point::new(dx, dy));
-            }
-        }
-
-        // Standing in a lit (non-dark) room reveals the whole room at once,
-        // walls included — the classic Rogue "the room lights up" behaviour.
-        if let Some(ri) = self.map.room_at(p) {
-            if !self.map.is_dark(p) {
-                let r = self.map.rooms[ri];
-                for y in r.y1..r.y2 {
-                    for x in r.x1..r.x2 {
-                        self.map.set_visible(Point::new(x, y));
-                    }
-                }
             }
         }
     }
