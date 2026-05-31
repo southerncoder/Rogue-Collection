@@ -45,7 +45,7 @@ Requires a recent stable Rust toolchain and an OpenGL‑capable display
 | Show help         | `?` (any key closes it)                          |
 | Autopilot bot     | `A` (toggle — a pathfinding bot plays for you)   |
 | Start / restart   | `Enter`                                          |
-| Quit              | `Esc`                                            |
+| Quit              | `Esc` (then confirm with `Y` / `Enter`)          |
 
 **Watch the bot play.** Press `A` in game (or launch with `cargo run -- --demo`)
 to hand control to a pathfinding autopilot. It routes to the down‑stairs each

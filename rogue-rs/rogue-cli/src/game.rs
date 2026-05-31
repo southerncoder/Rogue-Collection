@@ -29,6 +29,7 @@ enum Mode {
     Title,
     Playing,
     Help,
+    ConfirmQuit,
     Dead,
     Won,
 }
@@ -54,6 +55,8 @@ pub struct Game {
     autopilot: bool,
     /// Frames remaining before the autopilot takes its next step (throttle).
     auto_cooldown: i32,
+    /// Mode to return to if the player cancels the quit confirmation.
+    quit_return: Mode,
 }
 
 impl Default for Game {
@@ -134,6 +137,7 @@ impl Game {
             mode: Mode::Title,
             autopilot: false,
             auto_cooldown: 0,
+            quit_return: Mode::Title,
         };
         game.descend_to(1);
         game.log("Welcome to the Dungeons of Doom! Find the Amulet of Yendor.");
@@ -824,6 +828,14 @@ impl Game {
                 self.render_play(ctx);
                 self.render_help(ctx);
             }
+            Mode::ConfirmQuit => {
+                // Draw the backdrop the player came from, then the prompt.
+                match self.quit_return {
+                    Mode::Title => self.render_title(ctx),
+                    _ => self.render_play(ctx),
+                }
+                self.render_confirm_quit(ctx);
+            }
             Mode::Dead => {
                 self.render_play(ctx);
                 self.render_banner(ctx, "You have died. Press Enter to play again.");
@@ -833,6 +845,22 @@ impl Game {
                 self.render_banner(ctx, "You escaped with the Amulet! Press Enter to play again.");
             }
         }
+    }
+
+    fn render_confirm_quit(&self, ctx: &mut BTerm) {
+        let mid = SCREEN_HEIGHT / 2;
+        ctx.print_color_centered(
+            mid - 1,
+            RGB::named(YELLOW),
+            RGB::named(BLACK),
+            "Quit the game?",
+        );
+        ctx.print_color_centered(
+            mid + 1,
+            RGB::named(WHITE),
+            RGB::named(BLACK),
+            "Press Y or Enter to quit   ·   N or Esc to keep playing",
+        );
     }
 
     fn render_title(&self, ctx: &mut BTerm) {
@@ -1038,17 +1066,24 @@ impl Game {
 
     // --- Top-level tick -----------------------------------------------------
 
+    /// Begin the quit-confirmation overlay, remembering where to return if the
+    /// player changes their mind.
+    fn request_quit(&mut self) {
+        self.quit_return = self.mode;
+        self.mode = Mode::ConfirmQuit;
+    }
+
     pub fn tick(&mut self, ctx: &mut BTerm) {
         match self.mode {
             Mode::Title => {
                 if ctx.key == Some(VirtualKeyCode::Return) {
                     self.mode = Mode::Playing;
                 } else if ctx.key == Some(VirtualKeyCode::Escape) {
-                    ctx.quitting = true;
+                    self.request_quit();
                 }
             }
             Mode::Playing => match ctx.key {
-                Some(VirtualKeyCode::Escape) => ctx.quitting = true,
+                Some(VirtualKeyCode::Escape) => self.request_quit(),
                 Some(VirtualKeyCode::A) => self.toggle_autopilot(),
                 Some(VirtualKeyCode::Slash) if !self.autopilot => self.mode = Mode::Help,
                 _ => {
@@ -1064,12 +1099,19 @@ impl Game {
                     self.mode = Mode::Playing;
                 }
             }
+            Mode::ConfirmQuit => match ctx.key {
+                Some(VirtualKeyCode::Y) | Some(VirtualKeyCode::Return) => ctx.quitting = true,
+                Some(VirtualKeyCode::N) | Some(VirtualKeyCode::Escape) => {
+                    self.mode = self.quit_return;
+                }
+                _ => {}
+            },
             Mode::Dead | Mode::Won => {
                 if ctx.key == Some(VirtualKeyCode::Return) {
                     *self = Game::new();
                     self.mode = Mode::Playing;
                 } else if ctx.key == Some(VirtualKeyCode::Escape) {
-                    ctx.quitting = true;
+                    self.request_quit();
                 }
             }
         }
