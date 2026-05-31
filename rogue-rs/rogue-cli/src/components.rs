@@ -75,6 +75,8 @@ pub enum ItemKind {
     Amulet,
     /// A readable scroll with a one-shot effect.
     Scroll(ScrollKind),
+    /// A wearable ring with a passive effect.
+    Ring(RingKind),
     /// Anything else: carried but inert in this build.
     Trinket,
 }
@@ -93,6 +95,41 @@ pub enum ScrollKind {
     /// Wake and anger every monster on the level.
     Aggravate,
     /// A scroll whose effect is not modelled yet — reads harmlessly.
+    Unknown,
+}
+
+/// The passive effect produced by a worn ring.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RingKind {
+    /// +1 to effective armor class (better defense).
+    Protection,
+    /// +1 effective strength (improves attack).
+    AddStrength,
+    /// Prevents strength drain (cosmetic in this build).
+    SustainStrength,
+    /// Auto-searches adjacent tiles each turn (larger FOV radius).
+    Searching,
+    /// See invisible monsters (cosmetic in this build).
+    SeeInvisible,
+    /// No mechanical effect.
+    Adornment,
+    /// Wakes all monsters when equipped (bad ring).
+    AggravateMonster,
+    /// +1 to hit bonus.
+    Dexterity,
+    /// +1 to damage bonus.
+    IncreaseDamage,
+    /// Doubles natural regeneration rate.
+    Regeneration,
+    /// Food is consumed half as quickly.
+    SlowDigestion,
+    /// Random teleport each ~100 turns (bad ring).
+    Teleportation,
+    /// Monsters less likely to notice you (cosmetic in this build).
+    Stealth,
+    /// Armor cannot rust (cosmetic in this build).
+    MaintainArmor,
+    /// A ring whose effect is not modelled yet.
     Unknown,
 }
 

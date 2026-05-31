@@ -48,6 +48,12 @@ pub struct Game {
     gold: i32,
     food: i32,
     regen_counter: i32,
+    /// When wearing a SlowDigestion ring, alternates each turn to halve food consumption.
+    digest_skip: bool,
+    /// Ring worn on the left hand (if any).
+    left_ring: Option<RingKind>,
+    /// Ring worn on the right hand (if any).
+    right_ring: Option<RingKind>,
     /// Monster archetype indices sorted easiest-first (by experience).
     monster_order: Vec<usize>,
     log: Vec<String>,
@@ -133,6 +139,9 @@ impl Game {
             gold: 0,
             food,
             regen_counter: 0,
+            digest_skip: false,
+            left_ring: None,
+            right_ring: None,
             monster_order,
             log: Vec::new(),
             mode: Mode::Title,
@@ -341,9 +350,10 @@ impl Game {
             }
             ItemCategory::Ring => {
                 let s = pick_named(&cats.rings, &mut self.rng);
+                let kind = ring_kind_from_name(&s);
                 Item {
                     name: format!("ring of {s}"),
-                    kind: ItemKind::Trinket,
+                    kind: ItemKind::Ring(kind),
                 }
             }
             ItemCategory::Stick => {
@@ -425,7 +435,14 @@ impl Game {
             VirtualKeyCode::G => acted = self.pickup(),
             VirtualKeyCode::Q => acted = self.quaff(),
             VirtualKeyCode::E => acted = self.eat(),
-            VirtualKeyCode::R => acted = self.read_scroll(),
+            VirtualKeyCode::R => {
+                if ctx.shift {
+                    acted = self.remove_ring();
+                } else {
+                    acted = self.read_scroll();
+                }
+            }
+            VirtualKeyCode::P => acted = self.put_on_ring(),
             _ => {}
         }
         if let Some(d) = delta {
@@ -595,6 +612,115 @@ impl Game {
         true
     }
 
+    fn put_on_ring(&mut self) -> bool {
+        let Some(i) = self
+            .inventory
+            .iter()
+            .position(|it| matches!(it.kind, ItemKind::Ring(_)))
+        else {
+            self.log("You have no rings to put on.");
+            return false;
+        };
+        if self.left_ring.is_some() && self.right_ring.is_some() {
+            self.log("You are already wearing two rings. Remove one first (Shift+R).");
+            return false;
+        }
+        let item = self.inventory.remove(i);
+        let ItemKind::Ring(kind) = item.kind else {
+            return false;
+        };
+        let slot = if self.left_ring.is_none() {
+            self.left_ring = Some(kind);
+            "left"
+        } else {
+            self.right_ring = Some(kind);
+            "right"
+        };
+        self.log(format!("You put on the {} ({} hand).", item.name, slot));
+        self.on_ring_equip(kind);
+        true
+    }
+
+    fn remove_ring(&mut self) -> bool {
+        let (kind, slot) = if let Some(k) = self.left_ring.take() {
+            (k, "left")
+        } else if let Some(k) = self.right_ring.take() {
+            (k, "right")
+        } else {
+            self.log("You are not wearing any rings.");
+            return false;
+        };
+        let name = ring_name(kind);
+        self.log(format!("You remove the ring of {} ({} hand).", name, slot));
+        self.inventory.push(Item {
+            name: format!("ring of {name}"),
+            kind: ItemKind::Ring(kind),
+        });
+        true
+    }
+
+    fn on_ring_equip(&mut self, kind: RingKind) {
+        match kind {
+            RingKind::AggravateMonster => {
+                self.apply_aggravate();
+                self.log("The ring pulses with malevolent energy!");
+            }
+            RingKind::Teleportation => {
+                self.log("The ring crackles with unstable energy...");
+            }
+            RingKind::Searching => {
+                self.log("Your senses sharpen.");
+            }
+            RingKind::SlowDigestion => {
+                self.log("You feel your metabolism slow.");
+            }
+            RingKind::Regeneration => {
+                self.log("You feel a surge of vitality.");
+            }
+            RingKind::SustainStrength => {
+                self.log("Your muscles feel fortified.");
+            }
+            RingKind::SeeInvisible => {
+                self.log("The world looks slightly different...");
+            }
+            _ => {}
+        }
+    }
+
+    // --- Ring passive effect helpers ----------------------------------------
+
+    fn ring_iter(&self) -> impl Iterator<Item = RingKind> {
+        [self.left_ring, self.right_ring].into_iter().flatten()
+    }
+
+    fn has_ring(&self, kind: RingKind) -> bool {
+        self.ring_iter().any(|k| k == kind)
+    }
+
+    fn ring_armor_bonus(&self) -> i32 {
+        self.ring_iter()
+            .filter(|&k| k == RingKind::Protection)
+            .count() as i32
+    }
+
+    fn ring_hit_bonus(&self) -> i32 {
+        self.ring_iter()
+            .filter(|&k| k == RingKind::Dexterity)
+            .count() as i32
+    }
+
+    fn ring_dam_bonus(&self) -> i32 {
+        self.ring_iter()
+            .filter(|&k| k == RingKind::IncreaseDamage)
+            .count() as i32
+    }
+
+    fn ring_str_bonus(&self) -> i32 {
+        self.ring_iter()
+            .filter(|&k| k == RingKind::AddStrength)
+            .count() as i32
+    }
+
     fn apply_magic_mapping(&mut self) {
         for y in 0..self.map.height {
             for x in 0..self.map.width {
@@ -658,10 +784,10 @@ impl Game {
             let s = self.world.get::<&Stats>(self.player).unwrap();
             Attacker {
                 level: s.level,
-                strength: s.strength,
+                strength: s.strength + self.ring_str_bonus(),
                 damage: s.damage.clone(),
-                hit_plus: s.hit_plus,
-                dam_plus: s.dam_plus,
+                hit_plus: s.hit_plus + self.ring_hit_bonus(),
+                dam_plus: s.dam_plus + self.ring_dam_bonus(),
             }
         };
         let def_arm = self.world.get::<&Stats>(target).unwrap().armor;
@@ -697,7 +823,8 @@ impl Game {
             }
         };
         let name = self.world.get::<&Name>(attacker_e).unwrap().0.clone();
-        let def_arm = self.world.get::<&Stats>(self.player).unwrap().armor;
+        // Protection ring lowers effective AC (lower = better in Rogue).
+        let def_arm = self.world.get::<&Stats>(self.player).unwrap().armor - self.ring_armor_bonus();
         match roll_attack(&attacker, def_arm, &mut self.rng) {
             Some(dmg) => {
                 self.damage_player(dmg);
@@ -814,27 +941,43 @@ impl Game {
     }
 
     fn tick_hunger_and_regen(&mut self) {
-        self.food -= 1;
-        if self.food == 20 {
-            self.log("You are starting to feel hungry.");
+        // SlowDigestion ring: consume food only every other turn.
+        let slow = self.has_ring(RingKind::SlowDigestion);
+        if slow {
+            self.digest_skip = !self.digest_skip;
         }
-        if self.food <= 0 {
-            // Starving: occasional damage.
-            if self.rng.percent(20) {
+        if !slow || !self.digest_skip {
+            self.food -= 1;
+            if self.food == 20 {
+                self.log("You are starting to feel hungry.");
+            }
+            if self.food <= 0 && self.rng.percent(20) {
                 self.damage_player(1);
                 self.log("You faint from lack of food!");
             }
         }
-        // Natural regeneration, faster at higher levels.
+
+        // Natural regeneration; Regeneration ring halves the period.
         self.regen_counter += 1;
         let level = self.world.get::<&Stats>(self.player).map(|s| s.level).unwrap_or(1);
         let period = (21 - level * 2).max(3);
-        if self.regen_counter >= period {
+        let regen_period = if self.has_ring(RingKind::Regeneration) {
+            (period / 2).max(1)
+        } else {
+            period
+        };
+        if self.regen_counter >= regen_period {
             self.regen_counter = 0;
             let mut s = self.world.get::<&mut Stats>(self.player).unwrap();
             if s.hp < s.max_hp {
                 s.hp += 1;
             }
+        }
+
+        // Teleportation ring: occasional random teleport (bad ring).
+        if self.has_ring(RingKind::Teleportation) && self.rng.rnd(100) == 0 {
+            self.apply_teleport();
+            self.log("The ring teleports you!");
         }
     }
 
@@ -843,14 +986,15 @@ impl Game {
     fn recompute_visibility(&mut self) {
         self.map.clear_visible();
         let p = self.player_pos();
-        const RADIUS: i32 = 5;
+        // Searching ring grants a wider FOV.
+        let radius: i32 = if self.has_ring(RingKind::Searching) { 7 } else { 5 };
 
         // Raycast field of view: for every tile within the radius, trace a line
         // from the player and reveal tiles until (and including) the first
         // opaque one. This lets the player see down corridors and across rooms.
-        for dy in -RADIUS..=RADIUS {
-            for dx in -RADIUS..=RADIUS {
-                if dx * dx + dy * dy > RADIUS * RADIUS {
+        for dy in -radius..=radius {
+            for dx in -radius..=radius {
+                if dx * dx + dy * dy > radius * radius {
                     continue;
                 }
                 self.reveal_line(p, p + Point::new(dx, dy));
@@ -967,6 +1111,8 @@ impl Game {
             "  q              quaff potion",
             "  e              eat food",
             "  r              read scroll",
+            "  p              put on ring",
+            "  Shift+R        remove ring",
             "  i              view inventory",
             "",
             "Other",
@@ -1019,8 +1165,10 @@ impl Game {
     }
 
     fn render_inventory(&self, ctx: &mut BTerm) {
-        let max_items = self.inventory.len().max(1);
-        let box_h = (max_items as i32 + 5).max(8); // title + blank + items + blank + footer
+        // Ring slots add 3 extra rows (blank + left + right).
+        let ring_rows = 4i32;
+        let item_rows = self.inventory.len().max(1) as i32;
+        let box_h = (item_rows + 4 + ring_rows).max(10);
         let box_w = 52i32;
         let x0 = (SCREEN_WIDTH - box_w) / 2;
         let y0 = (SCREEN_HEIGHT - box_h) / 2;
@@ -1047,12 +1195,25 @@ impl Game {
                     ItemKind::Weapon { .. } => "weapon",
                     ItemKind::Armor(_) => "armor",
                     ItemKind::Amulet => "amulet",
+                    ItemKind::Ring(_) => "ring",
                     ItemKind::Trinket => "trinket",
                 };
                 let line = format!("{})  {:<36} [{}]", label, item.name, category);
                 ctx.print_color(tx, y0 + 3 + i as i32, RGB::named(WHITE), RGB::named(BLACK), &line);
             }
         }
+
+        // Ring slots section.
+        let ring_y = y0 + item_rows + 4;
+        ctx.print_color(tx, ring_y, RGB::named(YELLOW), RGB::named(BLACK), "Rings worn:");
+        let left_str = self.left_ring.map(|k| format!("ring of {}", ring_name(k)))
+            .unwrap_or_else(|| "(none)".to_string());
+        let right_str = self.right_ring.map(|k| format!("ring of {}", ring_name(k)))
+            .unwrap_or_else(|| "(none)".to_string());
+        ctx.print_color(tx, ring_y + 1, RGB::named(WHITE), RGB::named(BLACK), &format!("  Left : {left_str}"));
+        ctx.print_color(tx, ring_y + 2, RGB::named(WHITE), RGB::named(BLACK), &format!("  Right: {right_str}"));
+        ctx.print_color(tx, ring_y + 3, RGB::named(GRAY), RGB::named(BLACK), "  p: put on ring   Shift+R: remove ring");
+
         ctx.print_color(
             tx,
             y0 + box_h - 2,
@@ -1142,7 +1303,7 @@ impl Game {
             footer_row,
             RGB::named(GRAY),
             RGB::named(BLACK),
-            "Move:arrows/hjkl  g:get  >:stairs down  q:quaff  e:eat  r:read  i:inventory  ?:help  Esc:quit",
+            "Move:arrows/hjkl  g:get  >:stairs  q:quaff  e:eat  r:read  p:ring  R:unring  i:inv  ?:help  Esc:quit",
         );
     }
 
@@ -1354,6 +1515,62 @@ fn scroll_kind_from_name(name: &str) -> ScrollKind {
     }
 }
 
+fn ring_kind_from_name(name: &str) -> RingKind {
+    let n = name.to_ascii_lowercase();
+    if n.contains("protection") {
+        RingKind::Protection
+    } else if n.contains("add strength") || n.contains("strength") {
+        RingKind::AddStrength
+    } else if n.contains("sustain") {
+        RingKind::SustainStrength
+    } else if n.contains("searching") || n.contains("search") {
+        RingKind::Searching
+    } else if n.contains("see invis") {
+        RingKind::SeeInvisible
+    } else if n.contains("adornment") {
+        RingKind::Adornment
+    } else if n.contains("aggravate") {
+        RingKind::AggravateMonster
+    } else if n.contains("dexterity") {
+        RingKind::Dexterity
+    } else if n.contains("increase damage") || n.contains("damage") {
+        RingKind::IncreaseDamage
+    } else if n.contains("regeneration") || n.contains("regen") {
+        RingKind::Regeneration
+    } else if n.contains("slow digestion") || n.contains("digestion") {
+        RingKind::SlowDigestion
+    } else if n.contains("teleport") {
+        RingKind::Teleportation
+    } else if n.contains("stealth") {
+        RingKind::Stealth
+    } else if n.contains("maintain armor") || n.contains("maintain") {
+        RingKind::MaintainArmor
+    } else {
+        RingKind::Unknown
+    }
+}
+
+/// Returns the display name suffix for a ring kind (matches items.ron names).
+fn ring_name(kind: RingKind) -> &'static str {
+    match kind {
+        RingKind::Protection => "protection",
+        RingKind::AddStrength => "add strength",
+        RingKind::SustainStrength => "sustain strength",
+        RingKind::Searching => "searching",
+        RingKind::SeeInvisible => "see invisible",
+        RingKind::Adornment => "adornment",
+        RingKind::AggravateMonster => "aggravate monster",
+        RingKind::Dexterity => "dexterity",
+        RingKind::IncreaseDamage => "increase damage",
+        RingKind::Regeneration => "regeneration",
+        RingKind::SlowDigestion => "slow digestion",
+        RingKind::Teleportation => "teleportation",
+        RingKind::Stealth => "stealth",
+        RingKind::MaintainArmor => "maintain armor",
+        RingKind::Unknown => "unknown",
+    }
+}
+
 fn tile_render(t: TileKind) -> (char, (u8, u8, u8)) {
     match t {
         TileKind::Empty => (' ', (0, 0, 0)),
@@ -1375,6 +1592,7 @@ fn item_render(item: &Item) -> Renderable {
         ItemKind::Armor(_) => ('[', (150, 150, 200)),
         ItemKind::Amulet => ('&', (255, 255, 0)),
         ItemKind::Scroll(_) => ('?', (230, 230, 180)),
+        ItemKind::Ring(_) => ('=', (200, 180, 60)),
         ItemKind::Trinket => ('?', (120, 200, 120)),
     };
     Renderable { glyph, color }
@@ -1514,6 +1732,53 @@ mod tests {
         let mut g = Game::new();
         g.mode = Mode::Playing;
         assert!(!g.read_scroll());
+    }
+
+    #[test]
+    fn ring_put_on_and_remove_cycles_correctly() {
+        let mut g = Game::new();
+        g.mode = Mode::Playing;
+        // No rings initially.
+        assert!(!g.remove_ring());
+        // Add two rings to inventory and equip both.
+        g.inventory.push(Item {
+            name: "ring of protection".into(),
+            kind: ItemKind::Ring(RingKind::Protection),
+        });
+        g.inventory.push(Item {
+            name: "ring of dexterity".into(),
+            kind: ItemKind::Ring(RingKind::Dexterity),
+        });
+        assert!(g.put_on_ring());
+        assert_eq!(g.left_ring, Some(RingKind::Protection));
+        assert!(g.put_on_ring());
+        assert_eq!(g.right_ring, Some(RingKind::Dexterity));
+        // Both slots full.
+        g.inventory.push(Item {
+            name: "ring of adornment".into(),
+            kind: ItemKind::Ring(RingKind::Adornment),
+        });
+        assert!(!g.put_on_ring());
+        // Bonuses active.
+        assert_eq!(g.ring_armor_bonus(), 1);
+        assert_eq!(g.ring_hit_bonus(), 1);
+        // Remove left ring, returns it to inventory.
+        assert!(g.remove_ring());
+        assert_eq!(g.left_ring, None);
+        let has_protection = g.inventory.iter().any(|it| matches!(it.kind, ItemKind::Ring(RingKind::Protection)));
+        assert!(has_protection, "removed ring should be back in inventory");
+    }
+
+    #[test]
+    fn ring_names_round_trip() {
+        for kind in [
+            RingKind::Protection, RingKind::AddStrength, RingKind::Dexterity,
+            RingKind::IncreaseDamage, RingKind::Regeneration, RingKind::SlowDigestion,
+            RingKind::Searching, RingKind::AggravateMonster,
+        ] {
+            let name = ring_name(kind);
+            assert_eq!(ring_kind_from_name(name), kind, "round-trip failed for {name}");
+        }
     }
 }
 
