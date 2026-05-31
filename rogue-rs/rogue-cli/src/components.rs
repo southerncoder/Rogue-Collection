@@ -139,3 +139,30 @@ pub struct Item {
     pub name: String,
     pub kind: ItemKind,
 }
+
+/// Active status effects on a creature.
+#[derive(Debug, Clone, Default)]
+pub struct StatusEffects {
+    /// Remaining turns of confusion (random movement).
+    pub confused: i32,
+    /// Remaining turns of blindness (FOV radius = 1).
+    pub blind: i32,
+    /// Remaining turns of poison (lose 1 STR per 3 turns, tracked via `poison_tick`).
+    pub poisoned: i32,
+    /// Remaining turns of paralysis (skip turns).
+    pub paralyzed: i32,
+    /// Counter for poison damage timing.
+    pub poison_tick: i32,
+    /// Remaining turns of haste (double speed — simplified: take two steps per turn).
+    pub haste: i32,
+}
+
+impl StatusEffects {
+    pub fn is_any_active(&self) -> bool {
+        self.confused > 0
+            || self.blind > 0
+            || self.poisoned > 0
+            || self.paralyzed > 0
+            || self.haste > 0
+    }
+}

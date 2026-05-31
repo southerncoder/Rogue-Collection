@@ -70,6 +70,8 @@ pub struct Game {
     log_scroll: usize,
     /// Total player turns taken this game (incremented each time the player acts).
     turns: u64,
+    /// Status effects currently active on the player.
+    status: StatusEffects,
 }
 
 impl Default for Game {
@@ -156,6 +158,7 @@ impl Game {
             quit_return: Mode::Title,
             log_scroll: 0,
             turns: 0,
+            status: StatusEffects::default(),
         };
         game.descend_to(1);
         game.log("Welcome to the Dungeons of Doom! Find the Amulet of Yendor.");
@@ -476,6 +479,25 @@ impl Game {
     /// Attempt to move (or bump-attack) in a direction. Returns true if a turn
     /// was consumed.
     fn try_move(&mut self, d: Point) -> bool {
+        if self.status.paralyzed > 0 {
+            self.log("You are paralyzed!");
+            return false;
+        }
+        let d = if self.status.confused > 0 && self.rng.percent(50) {
+            let dirs = [
+                Point::new(-1, 0),
+                Point::new(1, 0),
+                Point::new(0, -1),
+                Point::new(0, 1),
+                Point::new(-1, -1),
+                Point::new(1, -1),
+                Point::new(-1, 1),
+                Point::new(1, 1),
+            ];
+            dirs[self.rng.rnd(8) as usize]
+        } else {
+            d
+        };
         let dest = self.player_pos() + d;
         if !self.map.is_walkable(dest) {
             return false;
@@ -791,8 +813,83 @@ impl Game {
         self.log("Your armor glows silver for a moment.");
     }
 
-    fn apply_aggravate(&mut self) {
-        let mut count = 0;
+    /// Apply a status effect to the player, stacking duration.
+    fn apply_status(&mut self, effect: &str, duration: i32) {
+        match effect {
+            "confused" => {
+                self.status.confused += duration;
+                self.log(format!("You are confused for {duration} turns!"));
+            }
+            "blind" => {
+                self.status.blind += duration;
+                self.log(format!("You are blinded for {duration} turns!"));
+            }
+            "poisoned" => {
+                self.status.poisoned += duration;
+                self.log("You are poisoned!");
+            }
+            "paralyzed" => {
+                self.status.paralyzed += duration;
+                self.log(format!("You are paralyzed for {duration} turns!"));
+            }
+            "haste" => {
+                self.status.haste += duration;
+                self.log(format!("You feel yourself moving faster for {duration} turns!"));
+            }
+            "restore" => {
+                self.status.poisoned = 0;
+                self.log("You feel your strength returning.");
+            }
+            _ => {}
+        }
+    }
+
+    /// Tick all active status effects (called at end of each player turn).
+    fn tick_status_effects(&mut self) {
+        if self.status.confused > 0 {
+            self.status.confused -= 1;
+            if self.status.confused == 0 {
+                self.log("You feel less confused.");
+            }
+        }
+        if self.status.blind > 0 {
+            self.status.blind -= 1;
+            if self.status.blind == 0 {
+                self.log("Your vision clears.");
+            }
+        }
+        if self.status.paralyzed > 0 {
+            self.status.paralyzed -= 1;
+            if self.status.paralyzed == 0 {
+                self.log("You can move again.");
+            }
+        }
+        if self.status.haste > 0 {
+            self.status.haste -= 1;
+            if self.status.haste == 0 {
+                self.log("You slow back down.");
+            }
+        }
+        if self.status.poisoned > 0 {
+            self.status.poison_tick += 1;
+            if self.status.poison_tick >= 3 {
+                self.status.poison_tick = 0;
+                let drain_needed = {
+                    let s = self.world.get::<&Stats>(self.player).unwrap();
+                    s.strength > 1
+                };
+                if drain_needed {
+                    let mut s = self.world.get::<&mut Stats>(self.player).unwrap();
+                    s.strength -= 1;
+                    drop(s);
+                    self.log("The poison saps your strength!");
+                }
+                self.status.poisoned -= 1;
+            }
+        }
+    }
+
+    fn apply_aggravate(&mut self) {        let mut count = 0;
         for (_e, m) in self.world.query::<&mut Monster>().iter() {
             m.awake = true;
             count += 1;
@@ -896,6 +993,7 @@ impl Game {
 
     fn end_player_turn(&mut self) {
         self.turns += 1;
+        self.tick_status_effects();
         self.monsters_act();
         self.tick_hunger_and_regen();
         self.recompute_visibility();
@@ -1009,8 +1107,14 @@ impl Game {
     fn recompute_visibility(&mut self) {
         self.map.clear_visible();
         let p = self.player_pos();
-        // Searching ring grants a wider FOV.
-        let radius: i32 = if self.has_ring(RingKind::Searching) { 7 } else { 5 };
+        // Blind status reduces FOV to radius 1.
+        let radius: i32 = if self.status.blind > 0 {
+            1
+        } else if self.has_ring(RingKind::Searching) {
+            7
+        } else {
+            5
+        };
 
         // Raycast field of view: for every tile within the radius, trace a line
         // from the player and reveal tiles until (and including) the first
@@ -1384,9 +1488,16 @@ impl Game {
         };
         let row = self.map.height + MAP_TOP;
         let auto = if self.autopilot { "  [AUTO]" } else { "" };
+        let mut tags = String::new();
+        if self.status.confused > 0 { tags.push_str("[CONF]"); }
+        if self.status.blind > 0 { tags.push_str("[BLND]"); }
+        if self.status.poisoned > 0 { tags.push_str("[PSND]"); }
+        if self.status.paralyzed > 0 { tags.push_str("[PARA]"); }
+        if self.status.haste > 0 { tags.push_str("[HSTE]"); }
         let line = format!(
-            "Level:{}  HP:{}/{}  Str:{}  Arm:{}  Gold:{}  Exp:{}  Depth:{}  {}{}",
-            s.level, s.hp, s.max_hp, s.strength, s.armor, self.gold, s.xp_reward, self.depth, hunger, auto
+            "Level:{}  HP:{}/{}  Str:{}  Arm:{}  Gold:{}  Exp:{}  Depth:{}  {}{}{}",
+            s.level, s.hp, s.max_hp, s.strength, s.armor, self.gold, s.xp_reward, self.depth,
+            hunger, auto, tags
         );
         ctx.print(0, row, line);
     }
@@ -1935,6 +2046,48 @@ mod tests {
         g.record_score(true);
         let s = Scores::load();
         assert!(!s.entries.is_empty());
+    }
+
+    #[test]
+    fn confused_status_expires_correctly() {
+        let mut g = Game::new();
+        g.mode = Mode::Playing;
+        g.apply_status("confused", 3);
+        assert_eq!(g.status.confused, 3);
+        g.tick_status_effects();
+        assert_eq!(g.status.confused, 2);
+        g.tick_status_effects();
+        g.tick_status_effects();
+        assert_eq!(g.status.confused, 0);
+    }
+
+    #[test]
+    fn paralyzed_blocks_movement() {
+        let mut g = Game::new();
+        g.mode = Mode::Playing;
+        g.apply_status("paralyzed", 5);
+        assert_eq!(g.status.paralyzed, 5);
+        // try_move should return false while paralyzed
+        let result = g.try_move(Point::new(1, 0));
+        assert!(!result, "paralyzed player should not be able to move");
+    }
+
+    #[test]
+    fn blind_reduces_fov_radius() {
+        let mut g = Game::new();
+        g.mode = Mode::Playing;
+        // Reveal whole map first
+        g.apply_magic_mapping();
+        // Apply blind
+        g.apply_status("blind", 10);
+        g.recompute_visibility();
+        // With blind the radius is 1, so only nearby tiles should be visible
+        let visible_count = (0..g.map.height)
+            .flat_map(|y| (0..g.map.width).map(move |x| Point::new(x, y)))
+            .filter(|&p| g.map.is_visible(p))
+            .count();
+        // With radius=1 only the 3x3 area around the player (max 9 tiles) is visible
+        assert!(visible_count <= 9, "blind radius should be very small, got {visible_count}");
     }
 }
 
