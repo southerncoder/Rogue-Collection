@@ -332,9 +332,10 @@ impl Game {
             }
             ItemCategory::Scroll => {
                 let s = pick_named(&cats.scrolls, &mut self.rng);
+                let kind = scroll_kind_from_name(&s);
                 Item {
                     name: format!("scroll of {s}"),
-                    kind: ItemKind::Trinket,
+                    kind: ItemKind::Scroll(kind),
                 }
             }
             ItemCategory::Ring => {
@@ -423,6 +424,7 @@ impl Game {
             VirtualKeyCode::G => acted = self.pickup(),
             VirtualKeyCode::Q => acted = self.quaff(),
             VirtualKeyCode::E => acted = self.eat(),
+            VirtualKeyCode::R => acted = self.read_scroll(),
             _ => {}
         }
         if let Some(d) = delta {
@@ -566,7 +568,89 @@ impl Game {
         }
     }
 
-    // --- Combat -------------------------------------------------------------
+    /// Read the first scroll in the inventory, applying its effect.
+    fn read_scroll(&mut self) -> bool {
+        let Some(i) = self
+            .inventory
+            .iter()
+            .position(|it| matches!(it.kind, ItemKind::Scroll(_)))
+        else {
+            self.log("You have no scrolls to read.");
+            return false;
+        };
+        let item = self.inventory.remove(i);
+        let ItemKind::Scroll(kind) = item.kind else {
+            return false;
+        };
+        self.log(format!("You read the {}.", item.name));
+        match kind {
+            ScrollKind::MagicMapping => self.apply_magic_mapping(),
+            ScrollKind::Teleport => self.apply_teleport(),
+            ScrollKind::EnchantWeapon => self.apply_enchant_weapon(),
+            ScrollKind::EnchantArmor => self.apply_enchant_armor(),
+            ScrollKind::Aggravate => self.apply_aggravate(),
+            ScrollKind::Unknown => self.log("The scroll crumbles to dust. Nothing happens."),
+        }
+        true
+    }
+
+    fn apply_magic_mapping(&mut self) {
+        for y in 0..self.map.height {
+            for x in 0..self.map.width {
+                let p = Point::new(x, y);
+                if self.map.tile(p) != TileKind::Empty {
+                    self.map.reveal(p);
+                }
+            }
+        }
+        self.log("The dungeon layout floods into your mind!");
+    }
+
+    fn apply_teleport(&mut self) {
+        let mut floors: Vec<Point> = Vec::new();
+        for y in 0..self.map.height {
+            for x in 0..self.map.width {
+                let p = Point::new(x, y);
+                if self.map.is_walkable(p) && self.entity_at(p).is_none() {
+                    floors.push(p);
+                }
+            }
+        }
+        if floors.is_empty() {
+            self.log("The air shimmers, but nothing happens.");
+            return;
+        }
+        let pick = floors[self.rng.rnd(floors.len() as i32) as usize];
+        if let Ok(mut pos) = self.world.get::<&mut Position>(self.player) {
+            pos.0 = pick;
+        }
+        self.recompute_visibility();
+        self.log("You blink across the dungeon!");
+    }
+
+    fn apply_enchant_weapon(&mut self) {
+        let mut s = self.world.get::<&mut Stats>(self.player).unwrap();
+        s.hit_plus += 1;
+        s.dam_plus += 1;
+        drop(s);
+        self.log("Your weapon glows blue for a moment.");
+    }
+
+    fn apply_enchant_armor(&mut self) {
+        let mut s = self.world.get::<&mut Stats>(self.player).unwrap();
+        s.armor -= 1; // lower armor class is better
+        drop(s);
+        self.log("Your armor glows silver for a moment.");
+    }
+
+    fn apply_aggravate(&mut self) {
+        let mut count = 0;
+        for (_e, m) in self.world.query::<&mut Monster>().iter() {
+            m.awake = true;
+            count += 1;
+        }
+        self.log(format!("A high-pitched humming wakes {count} monsters!"));
+    }
 
     fn player_attack(&mut self, target: Entity) {
         let attacker = {
@@ -819,7 +903,6 @@ impl Game {
             Mode::Title => self.render_title(ctx),
             Mode::Playing => self.render_play(ctx),
             Mode::Help => {
-                self.render_play(ctx);
                 self.render_help(ctx);
             }
             Mode::ConfirmQuit => {
@@ -862,14 +945,12 @@ impl Game {
         ctx.print_centered(10, "a modern Rust reimplementation");
         ctx.print_centered(13, "Press Enter to begin");
         ctx.print_centered(15, "Move: hjkl / yubn / arrows   Wait: .   Descend: >");
-        ctx.print_centered(16, "Pick up: g   Quaff: q   Eat: e   Quit: Esc");
+        ctx.print_centered(16, "Pick up: g   Quaff: q   Eat: e   Read: r   Quit: Esc");
         ctx.print_centered(18, "Press ? in game for help   ·   A = autopilot bot");
     }
 
     fn render_help(&self, ctx: &mut BTerm) {
         let lines = [
-            "===== HELP =====",
-            "",
             "Movement",
             "  h j k l        left / down / up / right",
             "  y u b n        diagonals",
@@ -881,23 +962,55 @@ impl Game {
             "  g              pick up item",
             "  q              quaff potion",
             "  e              eat food",
+            "  r              read scroll",
             "",
             "Other",
             "  ?              show / hide this help",
             "  A              toggle autopilot (a bot plays for you)",
             "  Esc            quit",
-            "",
-            "Press any key to return to the game.",
         ];
-        let top = (SCREEN_HEIGHT - lines.len() as i32) / 2;
+
+        // A centred, opaque panel so the map underneath never bleeds through.
+        let inner_w = lines.iter().map(|l| l.len()).max().unwrap_or(0) as i32;
+        let pad = 2;
+        let box_w = inner_w + pad * 2;
+        let box_h = lines.len() as i32 + 4; // title + blank + body + footer
+        let x0 = (SCREEN_WIDTH - box_w) / 2;
+        let y0 = (SCREEN_HEIGHT - box_h) / 2;
+
+        // Fill the panel background and draw a border.
+        for y in y0..y0 + box_h {
+            for x in x0..x0 + box_w {
+                ctx.set(x, y, RGB::named(WHITE), RGB::named(BLACK), to_cp437(' '));
+            }
+        }
+        ctx.draw_box(
+            x0,
+            y0,
+            box_w - 1,
+            box_h - 1,
+            RGB::named(WHITE),
+            RGB::named(BLACK),
+        );
+
+        let tx = x0 + pad;
+        ctx.print_color(tx, y0 + 1, RGB::named(YELLOW), RGB::named(BLACK), "HELP");
         for (i, line) in lines.iter().enumerate() {
-            ctx.print_color_centered(
-                top + i as i32,
+            ctx.print_color(
+                tx,
+                y0 + 3 + i as i32,
                 RGB::named(WHITE),
                 RGB::named(BLACK),
                 line,
             );
         }
+        ctx.print_color(
+            tx,
+            y0 + box_h - 2,
+            RGB::named(GRAY),
+            RGB::named(BLACK),
+            "Press any key to return to the game.",
+        );
     }
 
     fn render_banner(&self, ctx: &mut BTerm, msg: &str) {
@@ -980,7 +1093,7 @@ impl Game {
             footer_row,
             RGB::named(GRAY),
             RGB::named(BLACK),
-            "Move:arrows/hjkl  g:get  >:stairs down  q:quaff  e:eat  ?:help  Esc:quit",
+            "Move:arrows/hjkl  g:get  >:stairs down  q:quaff  e:eat  r:read  ?:help  Esc:quit",
         );
     }
 
@@ -1172,6 +1285,25 @@ fn pick_named(items: &[rogue_core::data::NamedItem], rng: &mut impl RogueRng) ->
         .unwrap_or_else(|| "nothing".to_string())
 }
 
+/// Map a scroll's flavour name to a modelled effect. Unmatched scrolls read
+/// harmlessly (they still exist as flavour items).
+fn scroll_kind_from_name(name: &str) -> ScrollKind {
+    let n = name.to_ascii_lowercase();
+    if n.contains("magic mapping") {
+        ScrollKind::MagicMapping
+    } else if n.contains("teleport") {
+        ScrollKind::Teleport
+    } else if n.contains("enchant weapon") {
+        ScrollKind::EnchantWeapon
+    } else if n.contains("enchant armor") || n.contains("protect armor") {
+        ScrollKind::EnchantArmor
+    } else if n.contains("aggravate") {
+        ScrollKind::Aggravate
+    } else {
+        ScrollKind::Unknown
+    }
+}
+
 fn tile_render(t: TileKind) -> (char, (u8, u8, u8)) {
     match t {
         TileKind::Empty => (' ', (0, 0, 0)),
@@ -1192,6 +1324,7 @@ fn item_render(item: &Item) -> Renderable {
         ItemKind::Weapon { .. } => (')', (180, 180, 220)),
         ItemKind::Armor(_) => ('[', (150, 150, 200)),
         ItemKind::Amulet => ('&', (255, 255, 0)),
+        ItemKind::Scroll(_) => ('?', (230, 230, 180)),
         ItemKind::Trinket => ('?', (120, 200, 120)),
     };
     Renderable { glyph, color }
@@ -1256,6 +1389,81 @@ mod tests {
         g.descend_to(2);
         assert_eq!(g.depth, 2);
         assert!(g.map.is_walkable(g.player_pos()));
+    }
+
+    #[test]
+    fn scroll_names_map_to_effects() {
+        assert_eq!(
+            scroll_kind_from_name("magic mapping"),
+            ScrollKind::MagicMapping
+        );
+        assert_eq!(scroll_kind_from_name("teleportation"), ScrollKind::Teleport);
+        assert_eq!(
+            scroll_kind_from_name("enchant weapon"),
+            ScrollKind::EnchantWeapon
+        );
+        assert_eq!(
+            scroll_kind_from_name("protect armor"),
+            ScrollKind::EnchantArmor
+        );
+        assert_eq!(
+            scroll_kind_from_name("aggravate monsters"),
+            ScrollKind::Aggravate
+        );
+        assert_eq!(scroll_kind_from_name("sleep"), ScrollKind::Unknown);
+    }
+
+    #[test]
+    fn reading_enchant_weapon_boosts_stats() {
+        let mut g = Game::new();
+        g.mode = Mode::Playing;
+        let before = {
+            let s = g.world.get::<&Stats>(g.player).unwrap();
+            (s.hit_plus, s.dam_plus)
+        };
+        g.inventory.push(Item {
+            name: "scroll of enchant weapon".into(),
+            kind: ItemKind::Scroll(ScrollKind::EnchantWeapon),
+        });
+        assert!(g.read_scroll());
+        let after = {
+            let s = g.world.get::<&Stats>(g.player).unwrap();
+            (s.hit_plus, s.dam_plus)
+        };
+        assert_eq!(after, (before.0 + 1, before.1 + 1));
+        assert!(
+            !g.inventory
+                .iter()
+                .any(|it| matches!(it.kind, ItemKind::Scroll(_))),
+            "scroll is consumed"
+        );
+    }
+
+    #[test]
+    fn reading_magic_mapping_reveals_the_level() {
+        let mut g = Game::new();
+        g.mode = Mode::Playing;
+        let revealed_before = (0..g.map.height)
+            .flat_map(|y| (0..g.map.width).map(move |x| Point::new(x, y)))
+            .filter(|&p| g.map.is_revealed(p))
+            .count();
+        g.inventory.push(Item {
+            name: "scroll of magic mapping".into(),
+            kind: ItemKind::Scroll(ScrollKind::MagicMapping),
+        });
+        assert!(g.read_scroll());
+        let revealed_after = (0..g.map.height)
+            .flat_map(|y| (0..g.map.width).map(move |x| Point::new(x, y)))
+            .filter(|&p| g.map.is_revealed(p))
+            .count();
+        assert!(revealed_after > revealed_before);
+    }
+
+    #[test]
+    fn reading_with_no_scroll_does_nothing() {
+        let mut g = Game::new();
+        g.mode = Mode::Playing;
+        assert!(!g.read_scroll());
     }
 }
 

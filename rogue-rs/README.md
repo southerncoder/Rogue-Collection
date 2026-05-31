@@ -42,6 +42,7 @@ Requires a recent stable Rust toolchain and an OpenGL‑capable display
 | Pick up item      | `g`                                              |
 | Quaff healing     | `q`                                              |
 | Eat food          | `e`                                              |
+| Read scroll       | `r`                                              |
 | Show help         | `?` (any key closes it)                          |
 | Autopilot bot     | `A` (toggle — a pathfinding bot plays for you)   |
 | Start / restart   | `Enter`                                          |
@@ -54,11 +55,23 @@ handy for demoing or sanity‑checking that a level is actually completable. The
 status line shows `[AUTO]` while it's driving; press `A` again to take over.
 
 **On-screen help.** The two bottom lines are always visible: a permanent key
-reminder (`Move … g:get  >:stairs down  q:quaff  e:eat  ?:help  Esc:quit`) and a
-context prompt that appears when you stand on something useful — e.g. stepping
-onto the down‑stairs (`>`) shows *"Press > to descend to the next level."*
-There are **no portals**: you change levels only via the `>` stairs. Press `?`
-any time for the full controls overlay.
+reminder (`Move … g:get  >:stairs down  q:quaff  e:eat  r:read  ?:help  Esc:quit`)
+and a context prompt that appears when you stand on something useful — e.g.
+stepping onto the down‑stairs (`>`) shows *"Press > to descend to the next
+level."* There are **no portals**: you change levels only via the `>` stairs.
+Press `?` any time for the full controls overlay.
+
+**Scrolls.** Pick scrolls up with `g`, then read one with `r`. Modelled effects:
+
+| Scroll              | Effect                                              |
+| ------------------- | --------------------------------------------------- |
+| magic mapping       | reveals the entire level layout                     |
+| teleportation       | teleports you to a random spot on the level         |
+| enchant weapon      | permanently +1 to hit and damage                    |
+| enchant / protect armor | permanently improves your armor by one point    |
+| aggravate monsters  | wakes and angers every monster (usually a bad idea) |
+
+Other scroll names exist as flavour and read harmlessly for now.
 
 **Goal:** descend to the Amulet of Yendor (level 26), pick it up, and win.
 Watch your **HP**, manage **hunger** (eat before you starve), and pick your

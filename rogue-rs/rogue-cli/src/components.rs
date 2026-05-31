@@ -73,8 +73,27 @@ pub enum ItemKind {
     Armor(i32),
     /// The Amulet of Yendor — the win condition.
     Amulet,
+    /// A readable scroll with a one-shot effect.
+    Scroll(ScrollKind),
     /// Anything else: carried but inert in this build.
     Trinket,
+}
+
+/// The effect produced when a scroll is read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScrollKind {
+    /// Reveal the entire level layout.
+    MagicMapping,
+    /// Whisk the player to a random walkable tile.
+    Teleport,
+    /// Permanently improve the wielded weapon (+1 to hit and damage).
+    EnchantWeapon,
+    /// Permanently improve worn armor (one point better).
+    EnchantArmor,
+    /// Wake and anger every monster on the level.
+    Aggravate,
+    /// A scroll whose effect is not modelled yet — reads harmlessly.
+    Unknown,
 }
 
 /// A pickable item on the floor or in the inventory.
