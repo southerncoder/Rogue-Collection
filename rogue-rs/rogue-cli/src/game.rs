@@ -372,9 +372,13 @@ impl Game {
             }
             ItemCategory::Stick => {
                 let s = pick_named(&cats.sticks, &mut self.rng);
+                let charges = self.rng.rnd(6) + 3;
                 Item {
                     name: format!("wand of {s}"),
-                    kind: ItemKind::Trinket,
+                    kind: ItemKind::Wand {
+                        kind: wand_kind_from_name(&s),
+                        charges,
+                    },
                 }
             }
         }
@@ -448,6 +452,7 @@ impl Game {
             }
             VirtualKeyCode::G => acted = self.pickup(),
             VirtualKeyCode::Q => acted = self.quaff(),
+            VirtualKeyCode::Z => acted = self.zap_wand(),
             VirtualKeyCode::E => acted = self.eat(),
             VirtualKeyCode::R => {
                 if ctx.shift {
@@ -674,6 +679,238 @@ impl Game {
             }
             PotionKind::Unknown => {
                 self.log("Nothing seems to happen.");
+            }
+        }
+    }
+
+    fn zap_wand(&mut self) -> bool {
+        let pos = self
+            .inventory
+            .iter()
+            .position(|it| matches!(it.kind, ItemKind::Wand { .. }));
+        if let Some(i) = pos {
+            let (kind, charges) = match self.inventory[i].kind {
+                ItemKind::Wand { kind, charges } => (kind, charges),
+                _ => unreachable!(),
+            };
+            if charges <= 0 {
+                self.log("The wand is exhausted.");
+                return false;
+            }
+            if let ItemKind::Wand { ref mut charges, .. } = self.inventory[i].kind {
+                *charges -= 1;
+            }
+            let name = self.inventory[i].name.clone();
+            self.log(format!("You zap the {name}."));
+            // Find nearest visible monster as target
+            let player_pos = self.player_pos();
+            let target = {
+                let mut best: Option<(Entity, i32)> = None;
+                for (e, pos) in self.world.query::<&Position>().iter()
+                    .filter(|(e, _)| *e != self.player)
+                    .map(|(e, p)| (e, p.0))
+                    .collect::<Vec<_>>()
+                {
+                    if !self.map.is_visible(pos) {
+                        continue;
+                    }
+                    if self.world.get::<&Monster>(e).is_err() {
+                        continue;
+                    }
+                    let dx = pos.x - player_pos.x;
+                    let dy = pos.y - player_pos.y;
+                    let dist = dx * dx + dy * dy;
+                    if best.is_none() || dist < best.unwrap().1 {
+                        best = Some((e, dist));
+                    }
+                }
+                best.map(|(e, _)| e)
+            };
+            self.apply_wand(kind, target);
+            true
+        } else {
+            self.log("You have no wands.");
+            false
+        }
+    }
+
+    fn apply_wand(&mut self, kind: WandKind, target: Option<Entity>) {
+        match kind {
+            WandKind::MagicMissile => {
+                if let Some(t) = target {
+                    let dmg = self.rng.roll(2, 6);
+                    let name = self.world.get::<&Name>(t).map(|n| n.0.clone()).unwrap_or_default();
+                    let dead = {
+                        let mut s = self.world.get::<&mut Stats>(t).unwrap();
+                        s.hp -= dmg;
+                        s.hp <= 0
+                    };
+                    self.log(format!("The missile hits the {name} for {dmg}."));
+                    if dead {
+                        let xp = self.world.get::<&Stats>(t).unwrap().xp_reward;
+                        let _ = self.world.despawn(t);
+                        self.log(format!("You have slain the {name}!"));
+                        self.gain_xp(xp);
+                    }
+                } else {
+                    self.log("The missile flies off into the dark.");
+                }
+            }
+            WandKind::Slow => {
+                if let Some(t) = target {
+                    let name = self.world.get::<&Name>(t).map(|n| n.0.clone()).unwrap_or_default();
+                    self.log(format!("The {name} slows down."));
+                } else {
+                    self.log("The beam dissipates.");
+                }
+            }
+            WandKind::Fear => {
+                if let Some(t) = target {
+                    let name = self.world.get::<&Name>(t).map(|n| n.0.clone()).unwrap_or_default();
+                    self.log(format!("The {name} turns and flees!"));
+                } else {
+                    self.log("The beam dissipates.");
+                }
+            }
+            WandKind::Confusion => {
+                if let Some(t) = target {
+                    let name = self.world.get::<&Name>(t).map(|n| n.0.clone()).unwrap_or_default();
+                    self.log(format!("The {name} looks confused."));
+                } else {
+                    self.log("The beam dissipates.");
+                }
+            }
+            WandKind::DrainLife => {
+                if let Some(t) = target {
+                    let name = self.world.get::<&Name>(t).map(|n| n.0.clone()).unwrap_or_default();
+                    let dmg = {
+                        let s = self.world.get::<&Stats>(t).unwrap();
+                        s.hp / 2
+                    };
+                    let dead = {
+                        let mut s = self.world.get::<&mut Stats>(t).unwrap();
+                        s.hp -= dmg;
+                        s.hp <= 0
+                    };
+                    self.log(format!("You drain life from the {name}!"));
+                    if dead {
+                        let xp = self.world.get::<&Stats>(t).unwrap().xp_reward;
+                        let _ = self.world.despawn(t);
+                        self.log(format!("You have slain the {name}!"));
+                        self.gain_xp(xp);
+                    }
+                } else {
+                    self.log("The drain beam finds nothing.");
+                }
+            }
+            WandKind::Polymorph => {
+                if let Some(t) = target {
+                    let name = self.world.get::<&Name>(t).map(|n| n.0.clone()).unwrap_or_default();
+                    let _ = self.world.despawn(t);
+                    self.log(format!("The {name} transforms!"));
+                } else {
+                    self.log("The beam dissipates.");
+                }
+            }
+            WandKind::Haste => {
+                self.apply_status("haste", 20);
+            }
+            WandKind::TeleportAway => {
+                if let Some(t) = target {
+                    let name = self.world.get::<&Name>(t).map(|n| n.0.clone()).unwrap_or_default();
+                    let mut floors: Vec<Point> = Vec::new();
+                    for y in 0..self.map.height {
+                        for x in 0..self.map.width {
+                            let p = Point::new(x, y);
+                            if self.map.is_walkable(p) && self.entity_at(p).is_none() {
+                                floors.push(p);
+                            }
+                        }
+                    }
+                    if !floors.is_empty() {
+                        let pick = floors[self.rng.rnd(floors.len() as i32) as usize];
+                        if let Ok(mut pos) = self.world.get::<&mut Position>(t) {
+                            pos.0 = pick;
+                        }
+                    }
+                    self.log(format!("The {name} vanishes!"));
+                } else {
+                    self.log("The beam dissipates.");
+                }
+            }
+            WandKind::CancellationWand => {
+                if let Some(_t) = target {
+                    self.log("The monster's powers are cancelled.");
+                } else {
+                    self.log("The beam dissipates.");
+                }
+            }
+            WandKind::NothingWand | WandKind::Unknown => {
+                self.log("Nothing happens.");
+            }
+            WandKind::Light => {
+                self.apply_magic_mapping();
+                self.log("The area is illuminated!");
+            }
+            WandKind::Fire => {
+                if let Some(t) = target {
+                    let dmg = self.rng.roll(3, 6);
+                    let name = self.world.get::<&Name>(t).map(|n| n.0.clone()).unwrap_or_default();
+                    let dead = {
+                        let mut s = self.world.get::<&mut Stats>(t).unwrap();
+                        s.hp -= dmg;
+                        s.hp <= 0
+                    };
+                    self.log(format!("A burst of fire hits the {name} for {dmg}!"));
+                    if dead {
+                        let xp = self.world.get::<&Stats>(t).unwrap().xp_reward;
+                        let _ = self.world.despawn(t);
+                        self.log(format!("You have slain the {name}!"));
+                        self.gain_xp(xp);
+                    }
+                } else {
+                    self.log("A burst of fire scorches the wall.");
+                }
+            }
+            WandKind::Cold => {
+                if let Some(t) = target {
+                    let dmg = self.rng.roll(2, 8);
+                    let name = self.world.get::<&Name>(t).map(|n| n.0.clone()).unwrap_or_default();
+                    let dead = {
+                        let mut s = self.world.get::<&mut Stats>(t).unwrap();
+                        s.hp -= dmg;
+                        s.hp <= 0
+                    };
+                    self.log(format!("An icy blast hits the {name} for {dmg}!"));
+                    if dead {
+                        let xp = self.world.get::<&Stats>(t).unwrap().xp_reward;
+                        let _ = self.world.despawn(t);
+                        self.log(format!("You have slain the {name}!"));
+                        self.gain_xp(xp);
+                    }
+                } else {
+                    self.log("The icy blast fades away.");
+                }
+            }
+            WandKind::Lightning => {
+                if let Some(t) = target {
+                    let dmg = self.rng.roll(4, 6);
+                    let name = self.world.get::<&Name>(t).map(|n| n.0.clone()).unwrap_or_default();
+                    let dead = {
+                        let mut s = self.world.get::<&mut Stats>(t).unwrap();
+                        s.hp -= dmg;
+                        s.hp <= 0
+                    };
+                    self.log(format!("A bolt of lightning strikes the {name} for {dmg}!"));
+                    if dead {
+                        let xp = self.world.get::<&Stats>(t).unwrap().xp_reward;
+                        let _ = self.world.despawn(t);
+                        self.log(format!("You have slain the {name}!"));
+                        self.gain_xp(xp);
+                    }
+                } else {
+                    self.log("The lightning bolt crackles into the wall.");
+                }
             }
         }
     }
@@ -1397,6 +1634,7 @@ impl Game {
                     ItemKind::Armor(_) => "armor",
                     ItemKind::Amulet => "amulet",
                     ItemKind::Ring(_) => "ring",
+                    ItemKind::Wand { .. } => "wand",
                     ItemKind::Trinket => "trinket",
                 };
                 let line = format!("{})  {:<36} [{}]", label, item.name, category);
@@ -1863,6 +2101,41 @@ fn potion_kind_from_name(name: &str) -> PotionKind {
     }
 }
 
+fn wand_kind_from_name(name: &str) -> WandKind {
+    let n = name.to_ascii_lowercase();
+    if n.contains("magic missile") {
+        WandKind::MagicMissile
+    } else if n.contains("slow") {
+        WandKind::Slow
+    } else if n.contains("fear") {
+        WandKind::Fear
+    } else if n.contains("confusion") {
+        WandKind::Confusion
+    } else if n.contains("drain life") {
+        WandKind::DrainLife
+    } else if n.contains("polymorph") {
+        WandKind::Polymorph
+    } else if n.contains("haste") {
+        WandKind::Haste
+    } else if n.contains("teleport") {
+        WandKind::TeleportAway
+    } else if n.contains("cancellation") {
+        WandKind::CancellationWand
+    } else if n.contains("nothing") {
+        WandKind::NothingWand
+    } else if n.contains("light") {
+        WandKind::Light
+    } else if n.contains("fire") {
+        WandKind::Fire
+    } else if n.contains("cold") {
+        WandKind::Cold
+    } else if n.contains("lightning") {
+        WandKind::Lightning
+    } else {
+        WandKind::Unknown
+    }
+}
+
 fn ring_kind_from_name(name: &str) -> RingKind {
     let n = name.to_ascii_lowercase();
     if n.contains("protection") {
@@ -1942,6 +2215,7 @@ fn item_render(item: &Item) -> Renderable {
         ItemKind::Amulet => ('&', (255, 255, 0)),
         ItemKind::Scroll(_) => ('?', (230, 230, 180)),
         ItemKind::Ring(_) => ('=', (200, 180, 60)),
+        ItemKind::Wand { .. } => ('/', (160, 220, 255)),
         ItemKind::Trinket => ('?', (120, 200, 120)),
     };
     Renderable { glyph, color }
@@ -2216,6 +2490,28 @@ mod tests {
             s.hp
         };
         assert!(hp_after > hp_before, "healing potion should restore HP");
+    }
+
+    #[test]
+    fn zap_wand_with_no_target_does_not_panic() {
+        let mut g = Game::new();
+        g.mode = Mode::Playing;
+        g.inventory.push(Item {
+            name: "wand of magic missile".to_string(),
+            kind: ItemKind::Wand { kind: WandKind::MagicMissile, charges: 5 },
+        });
+        // No monsters are visible — zapping should complete without panicking
+        let acted = g.zap_wand();
+        assert!(acted, "zapping with charges should consume a turn");
+        // Charges should have been decremented — find the wand by type
+        let charges = g.inventory.iter().find_map(|it| {
+            if let ItemKind::Wand { charges, .. } = it.kind {
+                Some(charges)
+            } else {
+                None
+            }
+        }).expect("wand should still be in inventory");
+        assert_eq!(charges, 4, "one charge should have been consumed");
     }
 }
 

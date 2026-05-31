@@ -79,6 +79,8 @@ pub enum ItemKind {
     Scroll(ScrollKind),
     /// A wearable ring with a passive effect.
     Ring(RingKind),
+    /// A zappable wand or staff.
+    Wand { kind: WandKind, charges: i32 },
     /// Anything else: carried but inert in this build.
     Trinket,
 }
@@ -100,6 +102,26 @@ pub enum PotionKind {
     MonsterDetection,
     MagicDetection,
     Levitation,
+    Unknown,
+}
+
+/// The effect produced when a wand or staff is zapped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WandKind {
+    MagicMissile,
+    Slow,
+    Fear,
+    Confusion,
+    DrainLife,
+    Polymorph,
+    Haste,
+    TeleportAway,
+    CancellationWand,
+    NothingWand,
+    Light,
+    Fire,
+    Cold,
+    Lightning,
     Unknown,
 }
 
