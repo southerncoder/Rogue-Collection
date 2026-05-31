@@ -37,6 +37,21 @@ enum Mode {
     Scores,
 }
 
+/// Tracks which item names the player has identified this run.
+#[derive(Debug, Default)]
+struct KnownItems {
+    identified: std::collections::HashSet<String>,
+}
+
+impl KnownItems {
+    fn identify(&mut self, base_name: &str) {
+        self.identified.insert(base_name.to_string());
+    }
+    fn is_known(&self, base_name: &str) -> bool {
+        self.identified.contains(base_name)
+    }
+}
+
 /// The whole game state handed to bracket-lib each tick.
 pub struct Game {
     world: World,
@@ -74,6 +89,8 @@ pub struct Game {
     status: StatusEffects,
     /// Trap kinds registered for the current level.
     trap_kinds: Vec<(Point, TrapKind)>,
+    /// Items the player has identified this run.
+    known_items: KnownItems,
 }
 
 impl Default for Game {
@@ -162,6 +179,7 @@ impl Game {
             turns: 0,
             status: StatusEffects::default(),
             trap_kinds: Vec::new(),
+            known_items: KnownItems::default(),
         };
         game.descend_to(1);
         game.log("Welcome to the Dungeons of Doom! Find the Amulet of Yendor.");
@@ -777,6 +795,7 @@ impl Game {
                 }
                 _ => {}
             }
+            self.known_items.identify(&name);
             true
         } else {
             self.log("You have no potions.");
@@ -1119,6 +1138,12 @@ impl Game {
             ScrollKind::EnchantWeapon => self.apply_enchant_weapon(),
             ScrollKind::EnchantArmor => self.apply_enchant_armor(),
             ScrollKind::Aggravate => self.apply_aggravate(),
+            ScrollKind::Identify => {
+                for item in &self.inventory {
+                    self.known_items.identify(&item.name);
+                }
+                self.log("Your items shimmer with clarity! All items identified.");
+            }
             ScrollKind::Unknown => self.log("The scroll crumbles to dust. Nothing happens."),
         }
         true
@@ -2284,6 +2309,8 @@ fn scroll_kind_from_name(name: &str) -> ScrollKind {
         ScrollKind::EnchantArmor
     } else if n.contains("aggravate") {
         ScrollKind::Aggravate
+    } else if n.contains("identify") {
+        ScrollKind::Identify
     } else {
         ScrollKind::Unknown
     }
@@ -2797,6 +2824,15 @@ mod tests {
         g.mode = Mode::Playing;
         g.inventory.clear();
         assert!(!g.throw_item());
+    }
+
+    #[test]
+    fn identification_system_marks_item_as_known() {
+        let mut g = Game::new();
+        g.mode = Mode::Playing;
+        assert!(!g.known_items.is_known("potion of healing"));
+        g.known_items.identify("potion of healing");
+        assert!(g.known_items.is_known("potion of healing"));
     }
 }
 

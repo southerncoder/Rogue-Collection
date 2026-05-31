@@ -161,6 +161,8 @@ pub enum ScrollKind {
     EnchantArmor,
     /// Wake and anger every monster on the level.
     Aggravate,
+    /// Identify all items in the player's inventory.
+    Identify,
     /// A scroll whose effect is not modelled yet — reads harmlessly.
     Unknown,
 }
