@@ -504,6 +504,7 @@ impl Game {
             }
             VirtualKeyCode::P => acted = self.put_on_ring(),
             VirtualKeyCode::S => acted = self.search_for_secrets(),
+            VirtualKeyCode::T => acted = self.throw_item(),
             _ => {}
         }
         if let Some(d) = delta {
@@ -630,6 +631,76 @@ impl Game {
             self.log("There are no stairs down here.");
             false
         }
+    }
+
+    fn throw_item(&mut self) -> bool {
+        let pos = self.inventory.iter().position(|it| matches!(it.kind, ItemKind::Weapon { .. }))
+            .or_else(|| if !self.inventory.is_empty() { Some(0) } else { None });
+        let Some(i) = pos else {
+            self.log("You have nothing to throw.");
+            return false;
+        };
+        let item = self.inventory.remove(i);
+
+        let ppos = self.player_pos();
+        let target: Option<Entity> = {
+            let candidates: Vec<(Entity, Point)> = self.world.query::<(&Position, &Monster)>().iter()
+                .map(|(e, (p, _))| (e, p.0))
+                .collect();
+            let mut nearest: Option<(i32, Entity)> = None;
+            for (e, pos) in candidates {
+                if self.map.is_visible(pos) {
+                    let dist = pos.chebyshev(ppos);
+                    if nearest.map(|(d, _)| dist < d).unwrap_or(true) {
+                        nearest = Some((dist, e));
+                    }
+                }
+            }
+            nearest.map(|(_, e)| e)
+        };
+
+        if let Some(t) = target {
+            let dmg = match &item.kind {
+                ItemKind::Weapon { .. } => self.rng.roll(1, 6) + 1,
+                _ => self.rng.roll(1, 4),
+            };
+            let mname = self.world.get::<&Name>(t).map(|n| n.0.clone()).unwrap_or_else(|_| "it".to_string());
+            let item_name = item.name.clone();
+            let dead = {
+                let mut s = self.world.get::<&mut Stats>(t).unwrap();
+                s.hp -= dmg;
+                s.hp <= 0
+            };
+            self.log(format!("You throw the {item_name}. It hits the {mname} for {dmg}!"));
+            if dead {
+                let xp = self.world.get::<&Stats>(t).map(|s| s.xp_reward).unwrap_or(0);
+                let _ = self.world.despawn(t);
+                self.log(format!("The {mname} is slain!"));
+                self.gain_xp(xp);
+            }
+        } else {
+            let drop_pos: Option<Point> = {
+                let candidates: Vec<Point> = (-2i32..=2)
+                    .flat_map(|dy| (-2i32..=2).map(move |dx| Point::new(ppos.x + dx, ppos.y + dy)))
+                    .filter(|&p| self.map.is_walkable(p) && self.entity_at(p).is_none())
+                    .collect();
+                if candidates.is_empty() {
+                    None
+                } else {
+                    let idx = self.rng.rnd(candidates.len() as i32) as usize;
+                    Some(candidates[idx])
+                }
+            };
+            let item_name = item.name.clone();
+            if let Some(p) = drop_pos {
+                let r = item_render(&item);
+                self.world.spawn((Position(p), item, r));
+                self.log(format!("The {item_name} clatters to the floor."));
+            } else {
+                self.log(format!("The {item_name} disappears into the darkness."));
+            }
+        }
+        true
     }
 
     fn pickup(&mut self) -> bool {
@@ -1701,6 +1772,7 @@ impl Game {
             "  Shift+R        remove ring",
             "  i              view inventory",
             "  s              search for secret doors",
+            "  t              throw item",
             "",
             "Other",
             "  ?              show / hide this help",
@@ -1973,7 +2045,7 @@ impl Game {
             footer_row,
             RGB::named(GRAY),
             RGB::named(BLACK),
-            "Move:arrows/hjkl  g:get  >:stairs  q:quaff  e:eat  r:read  p:ring  R:unring  i:inv  s:search  m:log  ?:help  Esc:quit",
+            "Move:arrows/hjkl  g:get  >:stairs  q:quaff  e:eat  r:read  p:ring  R:unring  i:inv  s:search  t:throw  m:log  ?:help  Esc:quit",
         );
     }
 
@@ -2717,6 +2789,14 @@ mod tests {
         g.mode = Mode::Playing;
         let result = g.search_for_secrets();
         assert!(result);
+    }
+
+    #[test]
+    fn throw_item_with_no_items_fails() {
+        let mut g = Game::new();
+        g.mode = Mode::Playing;
+        g.inventory.clear();
+        assert!(!g.throw_item());
     }
 }
 
