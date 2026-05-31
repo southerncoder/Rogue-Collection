@@ -1816,10 +1816,7 @@ impl Game {
                 self.render_play(ctx);
                 self.render_banner(ctx, "You have died. Enter: new game   S: scores   Esc: quit");
             }
-            Mode::Won => {
-                self.render_play(ctx);
-                self.render_banner(ctx, "You escaped with the Amulet! Enter: new game   S: scores   Esc: quit");
-            }
+            Mode::Won => self.render_won(ctx),
             Mode::MessageLog => {
                 self.render_message_log(ctx);
             }
@@ -2058,6 +2055,49 @@ impl Game {
             RGB::named(BLACK),
             "Press any key to return.",
         );
+    }
+
+    fn render_won(&self, ctx: &mut BTerm) {
+        let box_w = 60i32;
+        let box_h = 16i32;
+        let x0 = (SCREEN_WIDTH - box_w) / 2;
+        let y0 = (SCREEN_HEIGHT - box_h) / 2;
+        let pad = 2i32;
+        let tx = x0 + pad;
+
+        for y in y0..y0 + box_h {
+            for x in x0..x0 + box_w {
+                ctx.set(x, y, RGB::named(WHITE), RGB::named(BLACK), to_cp437(' '));
+            }
+        }
+        ctx.draw_box(x0, y0, box_w - 1, box_h - 1, RGB::named(YELLOW), RGB::named(BLACK));
+
+        ctx.print_color_centered(y0 + 1, RGB::named(YELLOW), RGB::named(BLACK),
+            "*** CONGRATULATIONS! YOU WIN! ***");
+        ctx.print_color_centered(y0 + 2, RGB::named(CYAN), RGB::named(BLACK),
+            "You escaped the dungeon with the Amulet of Yendor!");
+
+        ctx.print_color(tx, y0 + 4, RGB::named(WHITE), RGB::named(BLACK), "SCORE SUMMARY");
+        ctx.print_color(tx, y0 + 5, RGB::named(WHITE), RGB::named(BLACK),
+            &format!("  Dungeon depth reached : {}", self.depth));
+        ctx.print_color(tx, y0 + 6, RGB::named(WHITE), RGB::named(BLACK),
+            &format!("  Gold collected        : {}", self.gold));
+        ctx.print_color(tx, y0 + 7, RGB::named(WHITE), RGB::named(BLACK),
+            &format!("  Turns taken           : {}", self.turns));
+
+        if let Ok(s) = self.world.get::<&Stats>(self.player) {
+            ctx.print_color(tx, y0 + 8, RGB::named(WHITE), RGB::named(BLACK),
+                &format!("  Character level      : {}", s.level));
+            ctx.print_color(tx, y0 + 9, RGB::named(WHITE), RGB::named(BLACK),
+                &format!("  Experience           : {}", s.xp_reward));
+        }
+
+        ctx.print_color(tx, y0 + 11, RGB::named(CYAN), RGB::named(BLACK),
+            "Your score has been recorded.");
+        ctx.print_color(tx, y0 + 12, RGB::named(CYAN), RGB::named(BLACK),
+            "Press S to view the hall of fame.");
+        ctx.print_color(tx, y0 + 13, RGB::named(GRAY), RGB::named(BLACK),
+            "Press Enter for a new game  |  Esc to quit.");
     }
 
     fn render_banner(&self, ctx: &mut BTerm, msg: &str) {
