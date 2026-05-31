@@ -254,6 +254,25 @@ impl Game {
         }
 
         self.recompute_visibility();
+        // Place a few secret doors adjacent to passages
+        let mut secret_count = 0;
+        let map_w = self.map.width;
+        let map_h = self.map.height;
+        let passage_tiles: Vec<Point> = (0..map_h)
+            .flat_map(|y| (0..map_w).map(move |x| Point::new(x, y)))
+            .filter(|&p| self.map.tile(p) == TileKind::Passage)
+            .collect();
+        for p in passage_tiles {
+            if secret_count >= 5 { break; }
+            for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1i32), (0, 1)] {
+                let np = Point::new(p.x + dx, p.y + dy);
+                if self.map.in_bounds(np) && self.map.tile(np) == TileKind::Wall && self.rng.percent(2) {
+                    self.map.set_tile(np, TileKind::SecretDoor);
+                    secret_count += 1;
+                    break;
+                }
+            }
+        }
         if depth > 1 {
             self.log(format!("You descend to level {depth}."));
         }
@@ -464,6 +483,7 @@ impl Game {
                 }
             }
             VirtualKeyCode::P => acted = self.put_on_ring(),
+            VirtualKeyCode::S => acted = self.search_for_secrets(),
             _ => {}
         }
         if let Some(d) = delta {
@@ -526,6 +546,28 @@ impl Game {
             self.log(format!("A trap springs! You take {dmg} damage."));
             self.map.set_tile(p, TileKind::Floor);
         }
+    }
+
+    fn search_for_secrets(&mut self) -> bool {
+        let ppos = self.player_pos();
+        let mut found_any = false;
+        for dy in -1i32..=1 {
+            for dx in -1i32..=1 {
+                if dx == 0 && dy == 0 { continue; }
+                let p = Point::new(ppos.x + dx, ppos.y + dy);
+                if self.map.in_bounds(p) && self.map.tile(p) == TileKind::SecretDoor {
+                    self.map.set_tile(p, TileKind::Door);
+                    self.map.set_visible(p);
+                    self.map.reveal(p);
+                    self.log("You find a secret door!");
+                    found_any = true;
+                }
+            }
+        }
+        if !found_any {
+            self.log("You search but find nothing.");
+        }
+        true
     }
 
     fn try_descend(&mut self) -> bool {
@@ -1606,6 +1648,7 @@ impl Game {
             "  p              put on ring",
             "  Shift+R        remove ring",
             "  i              view inventory",
+            "  s              search for secret doors",
             "",
             "Other",
             "  ?              show / hide this help",
@@ -1878,7 +1921,7 @@ impl Game {
             footer_row,
             RGB::named(GRAY),
             RGB::named(BLACK),
-            "Move:arrows/hjkl  g:get  >:stairs  q:quaff  e:eat  r:read  p:ring  R:unring  i:inv  m:log  ?:help  Esc:quit",
+            "Move:arrows/hjkl  g:get  >:stairs  q:quaff  e:eat  r:read  p:ring  R:unring  i:inv  s:search  m:log  ?:help  Esc:quit",
         );
     }
 
@@ -2270,6 +2313,7 @@ fn tile_render(t: TileKind) -> (char, (u8, u8, u8)) {
         TileKind::Wall => ('#', (140, 110, 80)),
         TileKind::Passage => ('#', (90, 90, 90)),
         TileKind::Door => ('+', (160, 120, 60)),
+        TileKind::SecretDoor => ('#', (140, 110, 80)),
         TileKind::StairsDown => ('>', (255, 255, 255)),
         TileKind::StairsUp => ('<', (255, 255, 255)),
         TileKind::Trap => ('^', (255, 80, 80)),
@@ -2613,6 +2657,14 @@ mod tests {
         g.gold = 50;
         g.apply_monster_special("leprechaun", MonsterSpecial::StealGold);
         assert_eq!(g.gold, 0, "all gold should have been stolen");
+    }
+
+    #[test]
+    fn search_for_secrets_finds_nothing_without_secret_doors() {
+        let mut g = Game::new();
+        g.mode = Mode::Playing;
+        let result = g.search_for_secrets();
+        assert!(result);
     }
 }
 

@@ -15,6 +15,8 @@ pub enum TileKind {
     Passage,
     /// Door between a room and a corridor (`+`).
     Door,
+    /// A secret door that looks like a wall until found.
+    SecretDoor,
     /// Stairs down to the next level (`>`).
     StairsDown,
     /// Stairs up (`<`).
@@ -26,12 +28,12 @@ pub enum TileKind {
 impl TileKind {
     /// Can a creature stand on / walk through this tile?
     pub fn walkable(self) -> bool {
-        !matches!(self, TileKind::Empty | TileKind::Wall)
+        !matches!(self, TileKind::Empty | TileKind::Wall | TileKind::SecretDoor)
     }
 
     /// Does this tile block line of sight?
     pub fn opaque(self) -> bool {
-        matches!(self, TileKind::Empty | TileKind::Wall)
+        matches!(self, TileKind::Empty | TileKind::Wall | TileKind::SecretDoor)
     }
 
     /// Default glyph used by simple renderers / fixed-map round-tripping.
@@ -42,6 +44,7 @@ impl TileKind {
             TileKind::Wall => '#',
             TileKind::Passage => '#',
             TileKind::Door => '+',
+            TileKind::SecretDoor => '#',
             TileKind::StairsDown => '>',
             TileKind::StairsUp => '<',
             TileKind::Trap => '^',
