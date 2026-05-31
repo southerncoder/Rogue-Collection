@@ -34,6 +34,7 @@ enum Mode {
     Dead,
     Won,
     MessageLog,
+    Scores,
 }
 
 /// The whole game state handed to bracket-lib each tick.
@@ -67,6 +68,8 @@ pub struct Game {
     quit_return: Mode,
     /// Scroll offset for the message log panel (0 = most recent messages at top).
     log_scroll: usize,
+    /// Total player turns taken this game (incremented each time the player acts).
+    turns: u64,
 }
 
 impl Default for Game {
@@ -152,6 +155,7 @@ impl Game {
             auto_cooldown: 0,
             quit_return: Mode::Title,
             log_scroll: 0,
+            turns: 0,
         };
         game.descend_to(1);
         game.log("Welcome to the Dungeons of Doom! Find the Amulet of Yendor.");
@@ -163,6 +167,18 @@ impl Game {
         if self.log.len() > MAX_LOG {
             self.log.remove(0);
         }
+    }
+
+    fn record_score(&mut self, won: bool) {
+        use crate::scores::{ScoreEntry, Scores};
+        let mut scores = Scores::load();
+        scores.add(ScoreEntry {
+            name: "adventurer".to_string(),
+            depth: self.depth,
+            gold: self.gold,
+            turns: self.turns,
+            won,
+        });
     }
 
     // --- Level construction -------------------------------------------------
@@ -516,6 +532,7 @@ impl Game {
         if matches!(item.kind, ItemKind::Amulet) {
             self.log("You have recovered the Amulet of Yendor! YOU WIN!");
             self.mode = Mode::Won;
+            self.record_score(true);
             return true;
         }
         self.log(format!("You pick up {}.", item.name));
@@ -847,6 +864,7 @@ impl Game {
         if dead {
             self.mode = Mode::Dead;
             self.log("You die...");
+            self.record_score(false);
         }
     }
 
@@ -877,6 +895,7 @@ impl Game {
     }
 
     fn end_player_turn(&mut self) {
+        self.turns += 1;
         self.monsters_act();
         self.tick_hunger_and_regen();
         self.recompute_visibility();
@@ -1067,14 +1086,17 @@ impl Game {
             }
             Mode::Dead => {
                 self.render_play(ctx);
-                self.render_banner(ctx, "You have died. Press Enter to play again.");
+                self.render_banner(ctx, "You have died. Enter: new game   S: scores   Esc: quit");
             }
             Mode::Won => {
                 self.render_play(ctx);
-                self.render_banner(ctx, "You escaped with the Amulet! Press Enter to play again.");
+                self.render_banner(ctx, "You escaped with the Amulet! Enter: new game   S: scores   Esc: quit");
             }
             Mode::MessageLog => {
                 self.render_message_log(ctx);
+            }
+            Mode::Scores => {
+                self.render_scores(ctx);
             }
         }
     }
@@ -1099,9 +1121,10 @@ impl Game {
         ctx.print_centered(8, "R O G U E");
         ctx.print_centered(10, "a modern Rust reimplementation");
         ctx.print_centered(13, "Press Enter to begin");
-        ctx.print_centered(15, "Move: hjkl / yubn / arrows   Wait: .   Descend: >");
-        ctx.print_centered(16, "Pick up: g   Quaff: q   Eat: e   Read: r   Inventory: i   Quit: Esc");
-        ctx.print_centered(18, "Press ? in game for help   ·   A = autopilot bot");
+        ctx.print_centered(14, "S: high scores");
+        ctx.print_centered(16, "Move: hjkl / yubn / arrows   Wait: .   Descend: >");
+        ctx.print_centered(17, "Pick up: g   Quaff: q   Eat: e   Read: r   Inventory: i   Quit: Esc");
+        ctx.print_centered(19, "Press ? in game for help   ·   A = autopilot bot");
     }
 
     fn render_help(&self, ctx: &mut BTerm) {
@@ -1265,6 +1288,42 @@ impl Game {
             RGB::named(GRAY),
             RGB::named(BLACK),
             "up/dn/jk: scroll   Any other key: return",
+        );
+    }
+
+    fn render_scores(&self, ctx: &mut BTerm) {
+        use crate::scores::Scores;
+        let scores = Scores::load();
+        let lines = scores.top_lines(15);
+
+        let box_w = 70i32;
+        let box_h = (lines.len() as i32 + 5).max(8);
+        let x0 = (SCREEN_WIDTH - box_w) / 2;
+        let y0 = (SCREEN_HEIGHT - box_h) / 2;
+        let pad = 2;
+        let tx = x0 + pad;
+
+        for y in y0..y0 + box_h {
+            for x in x0..x0 + box_w {
+                ctx.set(x, y, RGB::named(WHITE), RGB::named(BLACK), to_cp437(' '));
+            }
+        }
+        ctx.draw_box(x0, y0, box_w - 1, box_h - 1, RGB::named(WHITE), RGB::named(BLACK));
+        ctx.print_color(tx, y0 + 1, RGB::named(YELLOW), RGB::named(BLACK), "HIGH SCORES");
+
+        if lines.is_empty() {
+            ctx.print_color(tx, y0 + 3, RGB::named(GRAY), RGB::named(BLACK), "(no scores recorded yet)");
+        } else {
+            for (i, line) in lines.iter().enumerate() {
+                ctx.print_color(tx, y0 + 3 + i as i32, RGB::named(WHITE), RGB::named(BLACK), line);
+            }
+        }
+        ctx.print_color(
+            tx,
+            y0 + box_h - 2,
+            RGB::named(GRAY),
+            RGB::named(BLACK),
+            "Press any key to return.",
         );
     }
 
@@ -1476,6 +1535,8 @@ impl Game {
             Mode::Title => {
                 if ctx.key == Some(VirtualKeyCode::Return) {
                     self.mode = Mode::Playing;
+                } else if ctx.key == Some(VirtualKeyCode::S) {
+                    self.mode = Mode::Scores;
                 } else if ctx.key == Some(VirtualKeyCode::Escape) {
                     self.request_quit();
                 }
@@ -1528,11 +1589,19 @@ impl Game {
                 _ => {}
             },
             Mode::Dead | Mode::Won => {
-                if ctx.key == Some(VirtualKeyCode::Return) {
-                    *self = Game::new();
-                    self.mode = Mode::Playing;
-                } else if ctx.key == Some(VirtualKeyCode::Escape) {
-                    self.request_quit();
+                match ctx.key {
+                    Some(VirtualKeyCode::Return) => {
+                        *self = Game::new();
+                        self.mode = Mode::Playing;
+                    }
+                    Some(VirtualKeyCode::S) => self.mode = Mode::Scores,
+                    Some(VirtualKeyCode::Escape) => self.request_quit(),
+                    _ => {}
+                }
+            }
+            Mode::Scores => {
+                if ctx.key.is_some() {
+                    self.mode = Mode::Title;
                 }
             }
         }
@@ -1855,6 +1924,17 @@ mod tests {
         assert_eq!(g.log_scroll, 0);
         // Verify the log is non-empty after game start (welcome message).
         assert!(!g.log.is_empty());
+    }
+
+    #[test]
+    fn score_records_on_death() {
+        use crate::scores::Scores;
+        let mut g = Game::new();
+        g.mode = Mode::Playing;
+        g.record_score(false);
+        g.record_score(true);
+        let s = Scores::load();
+        assert!(!s.entries.is_empty());
     }
 }
 
