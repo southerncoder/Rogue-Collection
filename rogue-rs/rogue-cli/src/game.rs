@@ -29,6 +29,7 @@ enum Mode {
     Title,
     Playing,
     Help,
+    Inventory,
     ConfirmQuit,
     Dead,
     Won,
@@ -905,6 +906,9 @@ impl Game {
             Mode::Help => {
                 self.render_help(ctx);
             }
+            Mode::Inventory => {
+                self.render_inventory(ctx);
+            }
             Mode::ConfirmQuit => {
                 // Draw the backdrop the player came from, then the prompt.
                 match self.quit_return {
@@ -945,7 +949,7 @@ impl Game {
         ctx.print_centered(10, "a modern Rust reimplementation");
         ctx.print_centered(13, "Press Enter to begin");
         ctx.print_centered(15, "Move: hjkl / yubn / arrows   Wait: .   Descend: >");
-        ctx.print_centered(16, "Pick up: g   Quaff: q   Eat: e   Read: r   Quit: Esc");
+        ctx.print_centered(16, "Pick up: g   Quaff: q   Eat: e   Read: r   Inventory: i   Quit: Esc");
         ctx.print_centered(18, "Press ? in game for help   ·   A = autopilot bot");
     }
 
@@ -963,6 +967,7 @@ impl Game {
             "  q              quaff potion",
             "  e              eat food",
             "  r              read scroll",
+            "  i              view inventory",
             "",
             "Other",
             "  ?              show / hide this help",
@@ -1003,6 +1008,50 @@ impl Game {
                 RGB::named(BLACK),
                 line,
             );
+        }
+        ctx.print_color(
+            tx,
+            y0 + box_h - 2,
+            RGB::named(GRAY),
+            RGB::named(BLACK),
+            "Press any key to return to the game.",
+        );
+    }
+
+    fn render_inventory(&self, ctx: &mut BTerm) {
+        let max_items = self.inventory.len().max(1);
+        let box_h = (max_items as i32 + 5).max(8); // title + blank + items + blank + footer
+        let box_w = 52i32;
+        let x0 = (SCREEN_WIDTH - box_w) / 2;
+        let y0 = (SCREEN_HEIGHT - box_h) / 2;
+        let pad = 2;
+        let tx = x0 + pad;
+
+        for y in y0..y0 + box_h {
+            for x in x0..x0 + box_w {
+                ctx.set(x, y, RGB::named(WHITE), RGB::named(BLACK), to_cp437(' '));
+            }
+        }
+        ctx.draw_box(x0, y0, box_w - 1, box_h - 1, RGB::named(WHITE), RGB::named(BLACK));
+        ctx.print_color(tx, y0 + 1, RGB::named(YELLOW), RGB::named(BLACK), "INVENTORY");
+
+        if self.inventory.is_empty() {
+            ctx.print_color(tx, y0 + 3, RGB::named(GRAY), RGB::named(BLACK), "Your pack is empty.");
+        } else {
+            for (i, item) in self.inventory.iter().enumerate() {
+                let label = (b'a' + i as u8) as char;
+                let category = match item.kind {
+                    ItemKind::Heal(_) => "potion",
+                    ItemKind::Scroll(_) => "scroll",
+                    ItemKind::Food => "food",
+                    ItemKind::Weapon { .. } => "weapon",
+                    ItemKind::Armor(_) => "armor",
+                    ItemKind::Amulet => "amulet",
+                    ItemKind::Trinket => "trinket",
+                };
+                let line = format!("{})  {:<36} [{}]", label, item.name, category);
+                ctx.print_color(tx, y0 + 3 + i as i32, RGB::named(WHITE), RGB::named(BLACK), &line);
+            }
         }
         ctx.print_color(
             tx,
@@ -1093,7 +1142,7 @@ impl Game {
             footer_row,
             RGB::named(GRAY),
             RGB::named(BLACK),
-            "Move:arrows/hjkl  g:get  >:stairs down  q:quaff  e:eat  r:read  ?:help  Esc:quit",
+            "Move:arrows/hjkl  g:get  >:stairs down  q:quaff  e:eat  r:read  i:inventory  ?:help  Esc:quit",
         );
     }
 
@@ -1229,6 +1278,7 @@ impl Game {
                 Some(VirtualKeyCode::Escape) => self.request_quit(),
                 Some(VirtualKeyCode::A) => self.toggle_autopilot(),
                 Some(VirtualKeyCode::Slash) if !self.autopilot => self.mode = Mode::Help,
+                Some(VirtualKeyCode::I) if !self.autopilot => self.mode = Mode::Inventory,
                 _ => {
                     if self.autopilot {
                         self.run_autopilot();
@@ -1237,7 +1287,7 @@ impl Game {
                     }
                 }
             },
-            Mode::Help => {
+            Mode::Help | Mode::Inventory => {
                 if ctx.key.is_some() {
                     self.mode = Mode::Playing;
                 }
