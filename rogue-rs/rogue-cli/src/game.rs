@@ -2119,7 +2119,9 @@ impl Game {
                 if !self.map.is_revealed(p) {
                     continue;
                 }
-                let (glyph, mut color) = if self.theme.use_boxy() {
+                let (glyph, mut color) = if self.theme.use_tiled() {
+                    tiled_tile_render(self.map.tile(p))
+                } else if self.theme.use_boxy() {
                     boxy_tile_render(self.map.tile(p), p, &self.map)
                 } else {
                     tile_render(self.map.tile(p))
@@ -2134,12 +2136,19 @@ impl Game {
         // Entities, only where currently visible.
         for (e, (pos, r)) in self.world.query::<(&Position, &Renderable)>().iter() {
             if self.map.is_visible(pos.0) {
-                // Boxy theme uses a smiley-face glyph for the player.
-                let glyph = if self.theme.use_boxy() && e == self.player { '☺' } else { r.glyph };
+                let (glyph, entity_color) = if self.theme.use_tiled() {
+                    // In tiled mode all entity sprites carry their own color, so
+                    // render with full white so the tile image is unmodified.
+                    (r.glyph, (255u8, 255u8, 255u8))
+                } else if self.theme.use_boxy() && e == self.player {
+                    ('☺', r.color)
+                } else {
+                    (r.glyph, r.color)
+                };
                 ctx.set(
                     pos.0.x,
                     pos.0.y + MAP_TOP,
-                    self.theme.apply(r.color),
+                    self.theme.apply(entity_color),
                     self.theme.bg(),
                     to_cp437(glyph),
                 );
@@ -2671,6 +2680,29 @@ fn boxy_tile_render(t: TileKind, p: Point, map: &Map) -> (char, (u8, u8, u8)) {
         TileKind::StairsDown => ('>', (255, 255, 255)),
         TileKind::StairsUp   => ('<', (255, 255, 255)),
         TileKind::Trap       => ('^', (220, 60, 60)),
+    }
+}
+
+// ── Tiled (pixel-art sprites) tile rendering ─────────────────────────────────
+
+/// Tile glyph + color for the tiled pixel-art theme.
+///
+/// Each glyph maps to a sprite in `rogue_tiles.png` at the matching CP437
+/// position.  Visible tiles use full white so the tile's own colors show
+/// through.  Passage tiles use `'▒'` (U+2592 = CP437 177), which is mapped
+/// to the legacy passage sprite in the tileset.
+fn tiled_tile_render(t: TileKind) -> (char, (u8, u8, u8)) {
+    let white = (255u8, 255u8, 255u8);
+    match t {
+        TileKind::Empty      => (' ', (0, 0, 0)),
+        TileKind::Wall       => ('#', white),
+        TileKind::SecretDoor => ('#', white),
+        TileKind::Floor      => ('.', white),
+        TileKind::Passage    => ('▒', white), // CP437 177 → passage sprite
+        TileKind::Door       => ('+', white),
+        TileKind::StairsDown => ('>', white),
+        TileKind::StairsUp   => ('<', white),
+        TileKind::Trap       => ('^', white),
     }
 }
 

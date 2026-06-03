@@ -17,6 +17,8 @@ pub enum GlyphStyle {
     Ascii,
     /// CP437 box-drawing for walls, `·` floors, `░` passages, `☺` player.
     Boxy,
+    /// Pixel-art tile sprites loaded from `rogue_tiles.png`.
+    Tiled,
 }
 
 /// A rendering color theme.
@@ -53,12 +55,18 @@ impl Theme {
         Self { tint: None, glyph_style: GlyphStyle::Boxy }
     }
 
+    /// Pixel-art tile sprites from the legacy Retro Rogue Collection tileset.
+    pub fn tiled() -> Self {
+        Self { tint: None, glyph_style: GlyphStyle::Tiled }
+    }
+
     /// Look up a theme by name (case-insensitive); unknown names fall back to classic.
     pub fn from_name(name: &str) -> Self {
         match name.to_ascii_lowercase().as_str() {
             "amber"  => Self::amber(),
             "green"  => Self::green(),
             "boxy"   => Self::boxy(),
+            "tiled"  => Self::tiled(),
             _        => Self::classic(),
         }
     }
@@ -84,6 +92,11 @@ impl Theme {
     /// Returns `true` when CP437 box-drawing glyphs should be used.
     pub fn use_boxy(&self) -> bool {
         self.glyph_style == GlyphStyle::Boxy
+    }
+
+    /// Returns `true` when pixel-art tile sprites should be used.
+    pub fn use_tiled(&self) -> bool {
+        self.glyph_style == GlyphStyle::Tiled
     }
 
     /// Background / clear color (always black).
