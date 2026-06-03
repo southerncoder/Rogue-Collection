@@ -47,6 +47,7 @@ impl KnownItems {
     fn identify(&mut self, base_name: &str) {
         self.identified.insert(base_name.to_string());
     }
+    #[allow(dead_code)]
     fn is_known(&self, base_name: &str) -> bool {
         self.identified.contains(base_name)
     }
@@ -654,7 +655,7 @@ impl Game {
 
     fn throw_item(&mut self) -> bool {
         let pos = self.inventory.iter().position(|it| matches!(it.kind, ItemKind::Weapon { .. }))
-            .or_else(|| if !self.inventory.is_empty() { Some(0) } else { None });
+            .or(if !self.inventory.is_empty() { Some(0) } else { None });
         let Some(i) = pos else {
             self.log("You have nothing to throw.");
             return false;
@@ -746,11 +747,9 @@ impl Game {
             for (dx, dy) in [(-1i32,0i32),(1,0),(0,-1),(0,1),(-1,-1),(1,-1),(-1,1),(1,1)] {
                 let np = Point::new(cur.x + dx, cur.y + dy);
                 if !self.map.in_bounds(np) { continue; }
-                if !self.map.is_revealed(np) && self.map.tile(np) != TileKind::Empty {
-                    if target.is_none() {
-                        target = Some(cur);
-                        break 'outer;
-                    }
+                if !self.map.is_revealed(np) && self.map.tile(np) != TileKind::Empty && target.is_none() {
+                    target = Some(cur);
+                    break 'outer;
                 }
                 if came_from.contains_key(&(np.x, np.y)) { continue; }
                 if self.map.is_walkable(np) && self.map.is_revealed(np) {
@@ -777,15 +776,10 @@ impl Game {
 
         let mut path = vec![(dest.x, dest.y)];
         let mut cur = (dest.x, dest.y);
-        loop {
-            match came_from.get(&cur) {
-                Some(Some(prev)) => {
-                    path.push(*prev);
-                    cur = *prev;
-                    if cur == (ppos.x, ppos.y) { break; }
-                }
-                _ => break,
-            }
+        while let Some(Some(prev)) = came_from.get(&cur) {
+            path.push(*prev);
+            cur = *prev;
+            if cur == (ppos.x, ppos.y) { break; }
         }
         path.reverse();
 
@@ -1971,8 +1965,8 @@ impl Game {
             .unwrap_or_else(|| "(none)".to_string());
         let right_str = self.right_ring.map(|k| format!("ring of {}", ring_name(k)))
             .unwrap_or_else(|| "(none)".to_string());
-        ctx.print_color(tx, ring_y + 1, RGB::named(WHITE), RGB::named(BLACK), &format!("  Left : {left_str}"));
-        ctx.print_color(tx, ring_y + 2, RGB::named(WHITE), RGB::named(BLACK), &format!("  Right: {right_str}"));
+        ctx.print_color(tx, ring_y + 1, RGB::named(WHITE), RGB::named(BLACK), format!("  Left : {left_str}"));
+        ctx.print_color(tx, ring_y + 2, RGB::named(WHITE), RGB::named(BLACK), format!("  Right: {right_str}"));
         ctx.print_color(tx, ring_y + 3, RGB::named(GRAY), RGB::named(BLACK), "  p: put on ring   Shift+R: remove ring");
 
         ctx.print_color(
@@ -2079,17 +2073,17 @@ impl Game {
 
         ctx.print_color(tx, y0 + 4, RGB::named(WHITE), RGB::named(BLACK), "SCORE SUMMARY");
         ctx.print_color(tx, y0 + 5, RGB::named(WHITE), RGB::named(BLACK),
-            &format!("  Dungeon depth reached : {}", self.depth));
+            format!("  Dungeon depth reached : {}", self.depth));
         ctx.print_color(tx, y0 + 6, RGB::named(WHITE), RGB::named(BLACK),
-            &format!("  Gold collected        : {}", self.gold));
+            format!("  Gold collected        : {}", self.gold));
         ctx.print_color(tx, y0 + 7, RGB::named(WHITE), RGB::named(BLACK),
-            &format!("  Turns taken           : {}", self.turns));
+            format!("  Turns taken           : {}", self.turns));
 
         if let Ok(s) = self.world.get::<&Stats>(self.player) {
             ctx.print_color(tx, y0 + 8, RGB::named(WHITE), RGB::named(BLACK),
-                &format!("  Character level      : {}", s.level));
+                format!("  Character level      : {}", s.level));
             ctx.print_color(tx, y0 + 9, RGB::named(WHITE), RGB::named(BLACK),
-                &format!("  Experience           : {}", s.xp_reward));
+                format!("  Experience           : {}", s.xp_reward));
         }
 
         ctx.print_color(tx, y0 + 11, RGB::named(CYAN), RGB::named(BLACK),
