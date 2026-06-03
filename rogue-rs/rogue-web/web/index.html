@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Rogue-rs</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0;
+      background: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <canvas id="glcanvas" tabindex="1"></canvas>
+  <!-- macroquad WASM glue — copy mq_js_bundle.js here from macroquad or use the CDN path -->
+  <script src="mq_js_bundle.js"></script>
+  <script type="module">
+    import init, { set_wasm } from "./rogue_web.js";
+    const wasm = await init();
+    set_wasm(wasm);
+    load("rogue_web_bg.wasm");
+  </script>
+</body>
+</html>

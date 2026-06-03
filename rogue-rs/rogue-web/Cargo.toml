@@ -1,0 +1,17 @@
+[package]
+name = "rogue-web"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "macroquad web/native frontend for rogue-engine (WASM-ready)."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+rogue-engine = { path = "../rogue-engine" }
+macroquad = "0.4"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
