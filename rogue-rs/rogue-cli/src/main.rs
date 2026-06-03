@@ -18,14 +18,15 @@ fn main() -> BError {
     link_resource!(TILE_FONT, "resources/rogue_tiles.png");
 
     let context = if theme_name == "tiled" {
-        // 16×32 pixel tiles: window is 80×28 tiles = 1280×896 px.
+        // 16×16 pixel tiles (same dimensions as standard mode).
+        // A custom font is loaded so pixel-art sprites replace the default glyphs.
         BTermBuilder::new()
             .with_title("Rogue — Rust edition")
             .with_resource_path("resources/")
-            .with_font("rogue_tiles.png", 16, 32)
+            .with_font("rogue_tiles.png", 16, 16)
             .with_simple_console(SCREEN_WIDTH, SCREEN_HEIGHT, "rogue_tiles.png")
             .with_dimensions(SCREEN_WIDTH, SCREEN_HEIGHT)
-            .with_tile_dimensions(16, 32)
+            .with_tile_dimensions(16, 16)
             .build()?
     } else {
         // The default 8×8 font makes the window tiny on modern displays.  Render
