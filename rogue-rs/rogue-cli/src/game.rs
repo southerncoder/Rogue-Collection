@@ -2119,7 +2119,11 @@ impl Game {
                 if !self.map.is_revealed(p) {
                     continue;
                 }
-                let (glyph, mut color) = tile_render(self.map.tile(p));
+                let (glyph, mut color) = if self.theme.use_boxy() {
+                    boxy_tile_render(self.map.tile(p), p, &self.map)
+                } else {
+                    tile_render(self.map.tile(p))
+                };
                 if !self.map.is_visible(p) {
                     color = dim(color); // remembered but out of sight
                 }
@@ -2128,14 +2132,16 @@ impl Game {
         }
 
         // Entities, only where currently visible.
-        for (_e, (pos, r)) in self.world.query::<(&Position, &Renderable)>().iter() {
+        for (e, (pos, r)) in self.world.query::<(&Position, &Renderable)>().iter() {
             if self.map.is_visible(pos.0) {
+                // Boxy theme uses a smiley-face glyph for the player.
+                let glyph = if self.theme.use_boxy() && e == self.player { '☺' } else { r.glyph };
                 ctx.set(
                     pos.0.x,
                     pos.0.y + MAP_TOP,
                     self.theme.apply(r.color),
                     self.theme.bg(),
-                    to_cp437(r.glyph),
+                    to_cp437(glyph),
                 );
             }
         }
@@ -2618,6 +2624,54 @@ fn monster_color(idx: usize, total: usize) -> (u8, u8, u8) {
 
 fn dim(c: (u8, u8, u8)) -> (u8, u8, u8) {
     (c.0 / 3, c.1 / 3, c.2 / 3)
+}
+
+// ── Boxy (CP437) tile rendering ──────────────────────────────────────────────
+
+const BOXY_WALL:  (u8, u8, u8) = (190, 110, 35);
+const BOXY_FLOOR: (u8, u8, u8) = (50, 210, 50);
+const BOXY_PASS:  (u8, u8, u8) = (90, 90, 90);
+
+fn is_wall_tile(t: TileKind) -> bool {
+    matches!(t, TileKind::Wall | TileKind::SecretDoor)
+}
+
+/// Returns the correct box-drawing character for a wall tile based on its
+/// cardinal neighbors: checks which adjacent cells are also wall tiles and
+/// picks the matching single-line box character.
+fn boxy_wall_glyph(p: Point, map: &Map) -> char {
+    let n = map.in_bounds(Point::new(p.x,     p.y - 1)) && is_wall_tile(map.tile(Point::new(p.x,     p.y - 1)));
+    let s = map.in_bounds(Point::new(p.x,     p.y + 1)) && is_wall_tile(map.tile(Point::new(p.x,     p.y + 1)));
+    let e = map.in_bounds(Point::new(p.x + 1, p.y    )) && is_wall_tile(map.tile(Point::new(p.x + 1, p.y    )));
+    let w = map.in_bounds(Point::new(p.x - 1, p.y    )) && is_wall_tile(map.tile(Point::new(p.x - 1, p.y    )));
+    match (n, s, e, w) {
+        (false, true,  true,  false) => '┌',
+        (false, true,  false, true ) => '┐',
+        (true,  false, true,  false) => '└',
+        (true,  false, false, true ) => '┘',
+        (true,  true,  true,  false) => '├',
+        (true,  true,  false, true ) => '┤',
+        (false, true,  true,  true ) => '┬',
+        (true,  false, true,  true ) => '┴',
+        (true,  true,  true,  true ) => '┼',
+        (true,  true,  false, false) | (true,  false, false, false) | (false, true,  false, false) => '│',
+        _                            => '─',
+    }
+}
+
+/// Tile glyph + color for the boxy CP437 theme.
+fn boxy_tile_render(t: TileKind, p: Point, map: &Map) -> (char, (u8, u8, u8)) {
+    match t {
+        TileKind::Empty      => (' ', (0, 0, 0)),
+        TileKind::Wall       => (boxy_wall_glyph(p, map), BOXY_WALL),
+        TileKind::SecretDoor => (boxy_wall_glyph(p, map), BOXY_WALL),
+        TileKind::Floor      => ('·', BOXY_FLOOR),
+        TileKind::Passage    => ('░', BOXY_PASS),
+        TileKind::Door       => ('+', BOXY_WALL),
+        TileKind::StairsDown => ('>', (255, 255, 255)),
+        TileKind::StairsUp   => ('<', (255, 255, 255)),
+        TileKind::Trap       => ('^', (220, 60, 60)),
+    }
 }
 
 #[cfg(test)]
