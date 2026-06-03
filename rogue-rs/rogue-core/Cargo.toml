@@ -10,3 +10,6 @@ description = "Engine-agnostic Rogue rules, map, entities, generation and data l
 serde = { workspace = true }
 ron = { workspace = true }
 rand = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
