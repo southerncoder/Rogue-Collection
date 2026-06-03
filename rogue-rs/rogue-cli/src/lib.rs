@@ -7,3 +7,4 @@
 pub mod components;
 pub mod game;
 pub mod scores;
+pub mod theme;

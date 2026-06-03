@@ -13,6 +13,7 @@ use rogue_core::rng::RogueRng;
 use rogue_core::{Dungeon, Map, Point};
 
 use crate::components::*;
+use crate::theme::Theme;
 
 /// Screen layout: one message line on top, the map, then a status line.
 pub const SCREEN_WIDTH: i32 = 80;
@@ -92,6 +93,8 @@ pub struct Game {
     trap_kinds: Vec<(Point, TrapKind)>,
     /// Items the player has identified this run.
     known_items: KnownItems,
+    /// Active visual color theme.
+    pub theme: Theme,
 }
 
 impl Default for Game {
@@ -181,6 +184,7 @@ impl Game {
             status: StatusEffects::default(),
             trap_kinds: Vec::new(),
             known_items: KnownItems::default(),
+            theme: Theme::classic(),
         };
         game.descend_to(1);
         game.log("Welcome to the Dungeons of Doom! Find the Amulet of Yendor.");
@@ -1824,26 +1828,26 @@ impl Game {
         let mid = SCREEN_HEIGHT / 2;
         ctx.print_color_centered(
             mid - 1,
-            RGB::named(YELLOW),
-            RGB::named(BLACK),
+            self.theme.header(),
+            self.theme.bg(),
             "Quit the game?",
         );
         ctx.print_color_centered(
             mid + 1,
-            RGB::named(WHITE),
-            RGB::named(BLACK),
+            self.theme.fg(),
+            self.theme.bg(),
             "Press Y or Enter to quit   ·   N or Esc to keep playing",
         );
     }
 
     fn render_title(&self, ctx: &mut BTerm) {
-        ctx.print_centered(8, "R O G U E");
-        ctx.print_centered(10, "a modern Rust reimplementation");
-        ctx.print_centered(13, "Press Enter to begin");
-        ctx.print_centered(14, "S: high scores");
-        ctx.print_centered(16, "Move: hjkl / yubn / arrows   Wait: .   Descend: >");
-        ctx.print_centered(17, "Pick up: g   Quaff: q   Eat: e   Read: r   Inventory: i   Quit: Esc");
-        ctx.print_centered(19, "Press ? in game for help   ·   A = autopilot bot");
+        ctx.print_color_centered(8,  self.theme.header(), self.theme.bg(), "R O G U E");
+        ctx.print_color_centered(10, self.theme.fg(),     self.theme.bg(), "a modern Rust reimplementation");
+        ctx.print_color_centered(13, self.theme.header(), self.theme.bg(), "Press Enter to begin");
+        ctx.print_color_centered(14, self.theme.fg(),     self.theme.bg(), "S: high scores");
+        ctx.print_color_centered(16, self.theme.fg(),     self.theme.bg(), "Move: hjkl / yubn / arrows   Wait: .   Descend: >");
+        ctx.print_color_centered(17, self.theme.fg(),     self.theme.bg(), "Pick up: g   Quaff: q   Eat: e   Read: r   Inventory: i   Quit: Esc");
+        ctx.print_color_centered(19, self.theme.dim_ui(), self.theme.bg(), "Press ? in game for help   ·   A = autopilot bot");
     }
 
     fn render_help(&self, ctx: &mut BTerm) {
@@ -1885,7 +1889,7 @@ impl Game {
         // Fill the panel background and draw a border.
         for y in y0..y0 + box_h {
             for x in x0..x0 + box_w {
-                ctx.set(x, y, RGB::named(WHITE), RGB::named(BLACK), to_cp437(' '));
+                ctx.set(x, y, self.theme.fg(), self.theme.bg(), to_cp437(' '));
             }
         }
         ctx.draw_box(
@@ -1893,26 +1897,26 @@ impl Game {
             y0,
             box_w - 1,
             box_h - 1,
-            RGB::named(WHITE),
-            RGB::named(BLACK),
+            self.theme.fg(),
+            self.theme.bg(),
         );
 
         let tx = x0 + pad;
-        ctx.print_color(tx, y0 + 1, RGB::named(YELLOW), RGB::named(BLACK), "HELP");
+        ctx.print_color(tx, y0 + 1, self.theme.header(), self.theme.bg(), "HELP");
         for (i, line) in lines.iter().enumerate() {
             ctx.print_color(
                 tx,
                 y0 + 3 + i as i32,
-                RGB::named(WHITE),
-                RGB::named(BLACK),
+                self.theme.fg(),
+                self.theme.bg(),
                 line,
             );
         }
         ctx.print_color(
             tx,
             y0 + box_h - 2,
-            RGB::named(GRAY),
-            RGB::named(BLACK),
+            self.theme.dim_ui(),
+            self.theme.bg(),
             "Press any key to return to the game.",
         );
     }
@@ -1930,14 +1934,14 @@ impl Game {
 
         for y in y0..y0 + box_h {
             for x in x0..x0 + box_w {
-                ctx.set(x, y, RGB::named(WHITE), RGB::named(BLACK), to_cp437(' '));
+                ctx.set(x, y, self.theme.fg(), self.theme.bg(), to_cp437(' '));
             }
         }
-        ctx.draw_box(x0, y0, box_w - 1, box_h - 1, RGB::named(WHITE), RGB::named(BLACK));
-        ctx.print_color(tx, y0 + 1, RGB::named(YELLOW), RGB::named(BLACK), "INVENTORY");
+        ctx.draw_box(x0, y0, box_w - 1, box_h - 1, self.theme.fg(), self.theme.bg());
+        ctx.print_color(tx, y0 + 1, self.theme.header(), self.theme.bg(), "INVENTORY");
 
         if self.inventory.is_empty() {
-            ctx.print_color(tx, y0 + 3, RGB::named(GRAY), RGB::named(BLACK), "Your pack is empty.");
+            ctx.print_color(tx, y0 + 3, self.theme.dim_ui(), self.theme.bg(), "Your pack is empty.");
         } else {
             for (i, item) in self.inventory.iter().enumerate() {
                 let label = (b'a' + i as u8) as char;
@@ -1954,26 +1958,26 @@ impl Game {
                     ItemKind::Trinket => "trinket",
                 };
                 let line = format!("{})  {:<36} [{}]", label, item.name, category);
-                ctx.print_color(tx, y0 + 3 + i as i32, RGB::named(WHITE), RGB::named(BLACK), &line);
+                ctx.print_color(tx, y0 + 3 + i as i32, self.theme.fg(), self.theme.bg(), &line);
             }
         }
 
         // Ring slots section.
         let ring_y = y0 + item_rows + 4;
-        ctx.print_color(tx, ring_y, RGB::named(YELLOW), RGB::named(BLACK), "Rings worn:");
+        ctx.print_color(tx, ring_y, self.theme.header(), self.theme.bg(), "Rings worn:");
         let left_str = self.left_ring.map(|k| format!("ring of {}", ring_name(k)))
             .unwrap_or_else(|| "(none)".to_string());
         let right_str = self.right_ring.map(|k| format!("ring of {}", ring_name(k)))
             .unwrap_or_else(|| "(none)".to_string());
-        ctx.print_color(tx, ring_y + 1, RGB::named(WHITE), RGB::named(BLACK), format!("  Left : {left_str}"));
-        ctx.print_color(tx, ring_y + 2, RGB::named(WHITE), RGB::named(BLACK), format!("  Right: {right_str}"));
-        ctx.print_color(tx, ring_y + 3, RGB::named(GRAY), RGB::named(BLACK), "  p: put on ring   Shift+R: remove ring");
+        ctx.print_color(tx, ring_y + 1, self.theme.fg(), self.theme.bg(), format!("  Left : {left_str}"));
+        ctx.print_color(tx, ring_y + 2, self.theme.fg(), self.theme.bg(), format!("  Right: {right_str}"));
+        ctx.print_color(tx, ring_y + 3, self.theme.dim_ui(), self.theme.bg(), "  p: put on ring   Shift+R: remove ring");
 
         ctx.print_color(
             tx,
             y0 + box_h - 2,
-            RGB::named(GRAY),
-            RGB::named(BLACK),
+            self.theme.dim_ui(),
+            self.theme.bg(),
             "Press any key to return to the game.",
         );
     }
@@ -1989,28 +1993,28 @@ impl Game {
 
         for y in y0..y0 + box_h {
             for x in x0..x0 + box_w {
-                ctx.set(x, y, RGB::named(WHITE), RGB::named(BLACK), to_cp437(' '));
+                ctx.set(x, y, self.theme.fg(), self.theme.bg(), to_cp437(' '));
             }
         }
-        ctx.draw_box(x0, y0, box_w - 1, box_h - 1, RGB::named(WHITE), RGB::named(BLACK));
-        ctx.print_color(tx, y0 + 1, RGB::named(YELLOW), RGB::named(BLACK), "MESSAGE LOG");
+        ctx.draw_box(x0, y0, box_w - 1, box_h - 1, self.theme.fg(), self.theme.bg());
+        ctx.print_color(tx, y0 + 1, self.theme.header(), self.theme.bg(), "MESSAGE LOG");
 
         if self.log.is_empty() {
-            ctx.print_color(tx, y0 + 3, RGB::named(GRAY), RGB::named(BLACK), "(no messages yet)");
+            ctx.print_color(tx, y0 + 3, self.theme.dim_ui(), self.theme.bg(), "(no messages yet)");
         } else {
             let msgs: Vec<&String> = self.log.iter().rev().collect();
             let start = self.log_scroll.min(msgs.len().saturating_sub(1));
             for (i, msg) in msgs.iter().skip(start).take(PANEL_LINES).enumerate() {
                 let max_chars = (box_w - pad * 2 - 1) as usize;
                 let display = if msg.len() > max_chars { &msg[..max_chars] } else { msg.as_str() };
-                ctx.print_color(tx, y0 + 3 + i as i32, RGB::named(WHITE), RGB::named(BLACK), display);
+                ctx.print_color(tx, y0 + 3 + i as i32, self.theme.fg(), self.theme.bg(), display);
             }
         }
         ctx.print_color(
             tx,
             y0 + box_h - 2,
-            RGB::named(GRAY),
-            RGB::named(BLACK),
+            self.theme.dim_ui(),
+            self.theme.bg(),
             "up/dn/jk: scroll   Any other key: return",
         );
     }
@@ -2029,24 +2033,24 @@ impl Game {
 
         for y in y0..y0 + box_h {
             for x in x0..x0 + box_w {
-                ctx.set(x, y, RGB::named(WHITE), RGB::named(BLACK), to_cp437(' '));
+                ctx.set(x, y, self.theme.fg(), self.theme.bg(), to_cp437(' '));
             }
         }
-        ctx.draw_box(x0, y0, box_w - 1, box_h - 1, RGB::named(WHITE), RGB::named(BLACK));
-        ctx.print_color(tx, y0 + 1, RGB::named(YELLOW), RGB::named(BLACK), "HIGH SCORES");
+        ctx.draw_box(x0, y0, box_w - 1, box_h - 1, self.theme.fg(), self.theme.bg());
+        ctx.print_color(tx, y0 + 1, self.theme.header(), self.theme.bg(), "HIGH SCORES");
 
         if lines.is_empty() {
-            ctx.print_color(tx, y0 + 3, RGB::named(GRAY), RGB::named(BLACK), "(no scores recorded yet)");
+            ctx.print_color(tx, y0 + 3, self.theme.dim_ui(), self.theme.bg(), "(no scores recorded yet)");
         } else {
             for (i, line) in lines.iter().enumerate() {
-                ctx.print_color(tx, y0 + 3 + i as i32, RGB::named(WHITE), RGB::named(BLACK), line);
+                ctx.print_color(tx, y0 + 3 + i as i32, self.theme.fg(), self.theme.bg(), line);
             }
         }
         ctx.print_color(
             tx,
             y0 + box_h - 2,
-            RGB::named(GRAY),
-            RGB::named(BLACK),
+            self.theme.dim_ui(),
+            self.theme.bg(),
             "Press any key to return.",
         );
     }
@@ -2061,44 +2065,44 @@ impl Game {
 
         for y in y0..y0 + box_h {
             for x in x0..x0 + box_w {
-                ctx.set(x, y, RGB::named(WHITE), RGB::named(BLACK), to_cp437(' '));
+                ctx.set(x, y, self.theme.fg(), self.theme.bg(), to_cp437(' '));
             }
         }
-        ctx.draw_box(x0, y0, box_w - 1, box_h - 1, RGB::named(YELLOW), RGB::named(BLACK));
+        ctx.draw_box(x0, y0, box_w - 1, box_h - 1, self.theme.header(), self.theme.bg());
 
-        ctx.print_color_centered(y0 + 1, RGB::named(YELLOW), RGB::named(BLACK),
+        ctx.print_color_centered(y0 + 1, self.theme.header(), self.theme.bg(),
             "*** CONGRATULATIONS! YOU WIN! ***");
-        ctx.print_color_centered(y0 + 2, RGB::named(CYAN), RGB::named(BLACK),
+        ctx.print_color_centered(y0 + 2, self.theme.accent(), self.theme.bg(),
             "You escaped the dungeon with the Amulet of Yendor!");
 
-        ctx.print_color(tx, y0 + 4, RGB::named(WHITE), RGB::named(BLACK), "SCORE SUMMARY");
-        ctx.print_color(tx, y0 + 5, RGB::named(WHITE), RGB::named(BLACK),
+        ctx.print_color(tx, y0 + 4, self.theme.fg(), self.theme.bg(), "SCORE SUMMARY");
+        ctx.print_color(tx, y0 + 5, self.theme.fg(), self.theme.bg(),
             format!("  Dungeon depth reached : {}", self.depth));
-        ctx.print_color(tx, y0 + 6, RGB::named(WHITE), RGB::named(BLACK),
+        ctx.print_color(tx, y0 + 6, self.theme.fg(), self.theme.bg(),
             format!("  Gold collected        : {}", self.gold));
-        ctx.print_color(tx, y0 + 7, RGB::named(WHITE), RGB::named(BLACK),
+        ctx.print_color(tx, y0 + 7, self.theme.fg(), self.theme.bg(),
             format!("  Turns taken           : {}", self.turns));
 
         if let Ok(s) = self.world.get::<&Stats>(self.player) {
-            ctx.print_color(tx, y0 + 8, RGB::named(WHITE), RGB::named(BLACK),
+            ctx.print_color(tx, y0 + 8, self.theme.fg(), self.theme.bg(),
                 format!("  Character level      : {}", s.level));
-            ctx.print_color(tx, y0 + 9, RGB::named(WHITE), RGB::named(BLACK),
+            ctx.print_color(tx, y0 + 9, self.theme.fg(), self.theme.bg(),
                 format!("  Experience           : {}", s.xp_reward));
         }
 
-        ctx.print_color(tx, y0 + 11, RGB::named(CYAN), RGB::named(BLACK),
+        ctx.print_color(tx, y0 + 11, self.theme.accent(), self.theme.bg(),
             "Your score has been recorded.");
-        ctx.print_color(tx, y0 + 12, RGB::named(CYAN), RGB::named(BLACK),
+        ctx.print_color(tx, y0 + 12, self.theme.accent(), self.theme.bg(),
             "Press S to view the hall of fame.");
-        ctx.print_color(tx, y0 + 13, RGB::named(GRAY), RGB::named(BLACK),
+        ctx.print_color(tx, y0 + 13, self.theme.dim_ui(), self.theme.bg(),
             "Press Enter for a new game  |  Esc to quit.");
     }
 
     fn render_banner(&self, ctx: &mut BTerm, msg: &str) {
         ctx.print_color_centered(
             SCREEN_HEIGHT / 2,
-            RGB::named(YELLOW),
-            RGB::named(BLACK),
+            self.theme.header(),
+            self.theme.bg(),
             msg,
         );
     }
@@ -2106,7 +2110,7 @@ impl Game {
     fn render_play(&self, ctx: &mut BTerm) {
         // Most recent message on the top line.
         if let Some(last) = self.log.last() {
-            ctx.print(0, MSG_ROW, last);
+            ctx.print_color(0, MSG_ROW, self.theme.fg(), self.theme.bg(), last);
         }
 
         for y in 0..self.map.height {
@@ -2119,7 +2123,7 @@ impl Game {
                 if !self.map.is_visible(p) {
                     color = dim(color); // remembered but out of sight
                 }
-                ctx.set(x, y + MAP_TOP, rgb(color), RGB::named(BLACK), to_cp437(glyph));
+                ctx.set(x, y + MAP_TOP, self.theme.apply(color), self.theme.bg(), to_cp437(glyph));
             }
         }
 
@@ -2129,8 +2133,8 @@ impl Game {
                 ctx.set(
                     pos.0.x,
                     pos.0.y + MAP_TOP,
-                    rgb(r.color),
-                    RGB::named(BLACK),
+                    self.theme.apply(r.color),
+                    self.theme.bg(),
                     to_cp437(r.glyph),
                 );
             }
@@ -2162,7 +2166,7 @@ impl Game {
             s.level, s.hp, s.max_hp, s.strength, s.armor, self.gold, s.xp_reward, self.depth,
             hunger, auto, tags
         );
-        ctx.print(0, row, line);
+        ctx.print_color(0, row, self.theme.fg(), self.theme.bg(), line);
     }
 
     /// Two always-on help lines below the status bar: a context-sensitive
@@ -2173,14 +2177,14 @@ impl Game {
         let footer_row = SCREEN_HEIGHT - 1;
 
         if let Some(ctx_hint) = self.context_hint() {
-            ctx.print_color(0, hint_row, RGB::named(YELLOW), RGB::named(BLACK), ctx_hint);
+            ctx.print_color(0, hint_row, self.theme.header(), self.theme.bg(), ctx_hint);
         }
 
         ctx.print_color(
             0,
             footer_row,
-            RGB::named(GRAY),
-            RGB::named(BLACK),
+            self.theme.dim_ui(),
+            self.theme.bg(),
             "Move:arrows/hjkl  g:get  >:stairs  q:quaff  e:eat  r:read  p:ring  R:unring  i:inv  s:search  t:throw  Tab:explore  m:log  ?:help  Esc:quit",
         );
     }
@@ -2365,7 +2369,9 @@ impl Game {
             Mode::Dead | Mode::Won => {
                 match ctx.key {
                     Some(VirtualKeyCode::Return) => {
+                        let saved_theme = self.theme;
                         *self = Game::new();
+                        self.theme = saved_theme;
                         self.mode = Mode::Playing;
                     }
                     Some(VirtualKeyCode::S) => self.mode = Mode::Scores,
@@ -2612,10 +2618,6 @@ fn monster_color(idx: usize, total: usize) -> (u8, u8, u8) {
 
 fn dim(c: (u8, u8, u8)) -> (u8, u8, u8) {
     (c.0 / 3, c.1 / 3, c.2 / 3)
-}
-
-fn rgb(c: (u8, u8, u8)) -> RGB {
-    RGB::from_u8(c.0, c.1, c.2)
 }
 
 #[cfg(test)]
