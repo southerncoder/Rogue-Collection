@@ -2119,39 +2119,48 @@ impl Game {
                 if !self.map.is_revealed(p) {
                     continue;
                 }
-                let (glyph, mut color) = if self.theme.use_tiled() {
-                    tiled_tile_render(self.map.tile(p))
-                } else if self.theme.use_boxy() {
-                    boxy_tile_render(self.map.tile(p), p, &self.map)
+                if self.theme.use_tiled() {
+                    let (glyph_u16, mut color) = tiled_tile_render(self.map.tile(p));
+                    if !self.map.is_visible(p) {
+                        color = dim(color);
+                    }
+                    ctx.set(x, y + MAP_TOP, self.theme.apply(color), self.theme.bg(), glyph_u16);
                 } else {
-                    tile_render(self.map.tile(p))
-                };
-                if !self.map.is_visible(p) {
-                    color = dim(color); // remembered but out of sight
+                    let (glyph, mut color) = if self.theme.use_boxy() {
+                        boxy_tile_render(self.map.tile(p), p, &self.map)
+                    } else {
+                        tile_render(self.map.tile(p))
+                    };
+                    if !self.map.is_visible(p) {
+                        color = dim(color);
+                    }
+                    ctx.set(x, y + MAP_TOP, self.theme.apply(color), self.theme.bg(), to_cp437(glyph));
                 }
-                ctx.set(x, y + MAP_TOP, self.theme.apply(color), self.theme.bg(), to_cp437(glyph));
             }
         }
 
         // Entities, only where currently visible.
         for (e, (pos, r)) in self.world.query::<(&Position, &Renderable)>().iter() {
             if self.map.is_visible(pos.0) {
-                let (glyph, entity_color) = if self.theme.use_tiled() {
-                    // In tiled mode all entity sprites carry their own color, so
-                    // render with full white so the tile image is unmodified.
-                    (r.glyph, (255u8, 255u8, 255u8))
-                } else if self.theme.use_boxy() && e == self.player {
-                    ('☺', r.color)
+                if self.theme.use_tiled() {
+                    // Use raw tile indices so entity sprites don't conflict with text glyphs.
+                    ctx.set(
+                        pos.0.x,
+                        pos.0.y + MAP_TOP,
+                        self.theme.apply((255u8, 255u8, 255u8)),
+                        self.theme.bg(),
+                        tiled_entity_glyph(r.glyph),
+                    );
                 } else {
-                    (r.glyph, r.color)
-                };
-                ctx.set(
-                    pos.0.x,
-                    pos.0.y + MAP_TOP,
-                    self.theme.apply(entity_color),
-                    self.theme.bg(),
-                    to_cp437(glyph),
-                );
+                    let glyph = if self.theme.use_boxy() && e == self.player { '☺' } else { r.glyph };
+                    ctx.set(
+                        pos.0.x,
+                        pos.0.y + MAP_TOP,
+                        self.theme.apply(r.color),
+                        self.theme.bg(),
+                        to_cp437(glyph),
+                    );
+                }
             }
         }
 
@@ -2684,25 +2693,60 @@ fn boxy_tile_render(t: TileKind, p: Point, map: &Map) -> (char, (u8, u8, u8)) {
 }
 
 // ── Tiled (pixel-art sprites) tile rendering ─────────────────────────────────
+//
+// All game sprites live at extended CP437 positions 128-169 in rogue_tiles.png
+// so they never overlap the standard ASCII range (32-127) used for UI text.
+//
+// Layout in the tileset:
+//   128-153  Monsters A–Z
+//   154      Player (@)
+//   155      Wall
+//   156      Floor
+//   157      Passage
+//   158      Door
+//   159      Stairs (up and down share one sprite)
+//   160      Trap
+//   161      Amulet  (&)
+//   162      Food    (:)
+//   163      Gold    ($)
+//   164      Potion  (!)
+//   165      Ring    (=)
+//   166      Scroll  (?)
+//   167      Wand    (/)
+//   168      Weapon  ())
+//   169      Armor   ([)
 
-/// Tile glyph + color for the tiled pixel-art theme.
-///
-/// Each glyph maps to a sprite in `rogue_tiles.png` at the matching CP437
-/// position.  Visible tiles use full white so the tile's own colors show
-/// through.  Passage tiles use `'▒'` (U+2592 = CP437 177), which is mapped
-/// to the legacy passage sprite in the tileset.
-fn tiled_tile_render(t: TileKind) -> (char, (u8, u8, u8)) {
+/// Raw font-sheet index for each map tile (bypasses `to_cp437`).
+fn tiled_tile_render(t: TileKind) -> (u16, (u8, u8, u8)) {
     let white = (255u8, 255u8, 255u8);
     match t {
-        TileKind::Empty      => (' ', (0, 0, 0)),
-        TileKind::Wall       => ('#', white),
-        TileKind::SecretDoor => ('#', white),
-        TileKind::Floor      => ('.', white),
-        TileKind::Passage    => ('▒', white), // CP437 177 → passage sprite
-        TileKind::Door       => ('+', white),
-        TileKind::StairsDown => ('>', white),
-        TileKind::StairsUp   => ('<', white),
-        TileKind::Trap       => ('^', white),
+        TileKind::Empty      => (32,  (0, 0, 0)),
+        TileKind::Wall       => (155, white),
+        TileKind::SecretDoor => (155, white),
+        TileKind::Floor      => (156, white),
+        TileKind::Passage    => (157, white),
+        TileKind::Door       => (158, white),
+        TileKind::StairsDown => (159, white),
+        TileKind::StairsUp   => (159, white),
+        TileKind::Trap       => (160, white),
+    }
+}
+
+/// Map an entity's render glyph to the raw tile-sheet index for tiled mode.
+fn tiled_entity_glyph(glyph: char) -> u16 {
+    match glyph {
+        'A'..='Z' => 128 + (glyph as u16 - 'A' as u16),
+        '@'       => 154,
+        '!'       => 164,
+        ':'       => 162,
+        ')'       => 168,
+        '['       => 169,
+        '&'       => 161,
+        '?'       => 166,
+        '='       => 165,
+        '/'       => 167,
+        '$'       => 163,
+        _         => to_cp437(glyph),
     }
 }
 
