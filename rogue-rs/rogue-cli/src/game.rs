@@ -2099,12 +2099,12 @@ impl Game {
     }
 
     fn render_banner(&self, ctx: &mut BTerm, msg: &str) {
-        ctx.print_color_centered(
-            SCREEN_HEIGHT / 2,
-            self.theme.header(),
-            self.theme.bg(),
-            msg,
-        );
+        // Clear the full row first so map tiles behind the text are overwritten.
+        let y = SCREEN_HEIGHT / 2;
+        for x in 0..SCREEN_WIDTH {
+            ctx.set(x, y, self.theme.bg(), self.theme.bg(), to_cp437(' '));
+        }
+        ctx.print_color_centered(y, self.theme.header(), self.theme.bg(), msg);
     }
 
     fn render_play(&self, ctx: &mut BTerm) {
@@ -2209,7 +2209,7 @@ impl Game {
             footer_row,
             self.theme.dim_ui(),
             self.theme.bg(),
-            "Move:arrows/hjkl  g:get  >:stairs  q:quaff  e:eat  r:read  p:ring  R:unring  i:inv  s:search  t:throw  Tab:explore  m:log  ?:help  Esc:quit",
+            "hjkl/arrows:move  g:get  >:stairs  q:quaff  e:eat  r:read  i:inv  s:srch  ?:help",
         );
     }
 

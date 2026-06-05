@@ -2077,12 +2077,13 @@ impl Game {
     }
 
     fn render_banner(&mut self, msg: &str) {
-        self.fb.print_centered(
-            SCREEN_HEIGHT / 2,
-            self.theme.header(),
-            self.theme.bg(),
-            msg,
-        );
+        // Clear the full row first so map tiles behind the text are overwritten.
+        let y = SCREEN_HEIGHT / 2;
+        let bg = self.theme.bg();
+        for x in 0..SCREEN_WIDTH {
+            self.fb.set(x, y, bg, bg, ' ');
+        }
+        self.fb.print_centered(y, self.theme.header(), bg, msg);
     }
 
     fn render_play(&mut self) {
@@ -2187,7 +2188,7 @@ impl Game {
             footer_row,
             self.theme.dim_ui(),
             self.theme.bg(),
-            "Move:arrows/hjkl  g:get  >:stairs  q:quaff  e:eat  r:read  p:ring  R:unring  i:inv  s:search  t:throw  Tab:explore  m:log  ?:help  Esc:quit",
+            "hjkl/arrows:move  g:get  >:stairs  q:quaff  e:eat  r:read  i:inv  s:srch  ?:help",
         );
     }
 
