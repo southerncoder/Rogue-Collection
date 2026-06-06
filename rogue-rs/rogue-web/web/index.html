@@ -13,7 +13,7 @@
 </head>
 <body>
   <div id="err"></div>
-  <canvas id="glcanvas" tabindex="1"></canvas>
+  <canvas id="glcanvas" tabindex="1" width="800" height="448"></canvas>
   <script>
     // Pre-declare globals that mq_js_bundle.js's quad_net plugin assigns to
     // without a var/let declaration (causes ReferenceError in strict mode).
@@ -32,6 +32,6 @@
     };
   </script>
   <script src="mq_js_bundle.js?v=3"></script>
-  <script>load("rogue-web.wasm?v=3");</script>
+  <script>load("rogue-web.wasm?v=4");</script>
 </body>
 </html>
