@@ -29,7 +29,7 @@ fn bot_descends_from_the_first_level() {
 
     // Run the bot for a bounded number of turns; it should leave level 1.
     let mut turns = 0;
-    while game.depth() < 2 && !game.is_dead() && !game.is_won() && turns < 2000 {
+    while game.depth() < 2 && !game.is_dead() && !game.is_won() && turns < 5000 {
         if !game.auto_turn() {
             break; // no path / nothing to do
         }
@@ -53,7 +53,7 @@ fn bot_makes_progress_across_several_levels() {
 
     let mut turns = 0;
     let mut deepest = game.depth();
-    while deepest < 4 && !game.is_dead() && !game.is_won() && turns < 8000 {
+    while deepest < 4 && !game.is_dead() && !game.is_won() && turns < 20000 {
         if !game.auto_turn() {
             break;
         }

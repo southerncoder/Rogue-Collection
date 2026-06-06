@@ -2229,8 +2229,7 @@ impl Game {
 
     // --- Autopilot bot ------------------------------------------------------
 
-    /// Where the bot wants to go on this level: the Amulet if it is here,
-    /// otherwise the down staircase.
+    /// Final-resort target: Amulet of Yendor if present, otherwise the stairs.
     fn auto_target(&self) -> Option<Point> {
         for (_e, (pos, item)) in self.world.query::<(&Position, &Item)>().iter() {
             if matches!(item.kind, ItemKind::Amulet) {
@@ -2240,27 +2239,170 @@ impl Game {
         self.map.stairs_down
     }
 
-    /// Take a single bot action: descend/pick up if on the target, else step
-    /// one tile along the shortest path toward it (bumping any monster in the
-    /// way). Returns true if a turn was consumed.
+    /// BFS to find the nearest walkable tile that is adjacent to at least one
+    /// unrevealed non-empty tile.  Returns `None` when the whole level is mapped.
+    fn auto_explore_target(&self) -> Option<Point> {
+        use std::collections::{HashSet, VecDeque};
+        let ppos = self.player_pos();
+        let mut queue: VecDeque<Point> = VecDeque::new();
+        let mut visited: HashSet<(i32, i32)> = HashSet::new();
+        queue.push_back(ppos);
+        visited.insert((ppos.x, ppos.y));
+        while let Some(cur) = queue.pop_front() {
+            for (dx, dy) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1),
+                              (-1, -1), (1, -1), (-1, 1), (1, 1)] {
+                let np = Point::new(cur.x + dx, cur.y + dy);
+                if !self.map.in_bounds(np) { continue; }
+                if !self.map.is_revealed(np) && self.map.tile(np) != TileKind::Empty {
+                    return Some(cur);
+                }
+                if visited.contains(&(np.x, np.y)) { continue; }
+                if self.map.is_walkable(np) && self.map.is_revealed(np) {
+                    visited.insert((np.x, np.y));
+                    queue.push_back(np);
+                }
+            }
+        }
+        None
+    }
+
+    /// Nearest revealed item on the floor (by Chebyshev distance).
+    /// Gold piles are excluded — they are auto-collected on entry.
+    fn nearest_floor_item(&self) -> Option<Point> {
+        let here = self.player_pos();
+        let mut best: Option<(i32, Point)> = None;
+        for (e, pos) in self.world.query::<&Position>().iter() {
+            if e == self.player { continue; }
+            let p = pos.0;
+            if !self.map.is_revealed(p) { continue; }
+            if self.world.get::<&Item>(e).is_ok() {
+                let d = p.chebyshev(here);
+                if best.map(|(bd, _)| d < bd).unwrap_or(true) {
+                    best = Some((d, p));
+                }
+            }
+        }
+        best.map(|(_, p)| p)
+    }
+
+    /// Take a single bot action.  Priority order:
+    ///   0. Emergency heal: quaff a healing item when below 50% HP.
+    ///   1. Pick up item at current tile.
+    ///   2. If healthy and no visible monsters: walk to nearest unexplored frontier.
+    ///   2b. If healthy and monsters visible: engage nearest visible monster.
+    ///   3. Collect: walk to nearest floor item (only when healthy).
+    ///   4. Descend: walk to Amulet/stairs and descend.
+    /// Returns true if a turn was consumed.
     pub fn auto_step(&mut self) -> bool {
         let here = self.player_pos();
-        let Some(target) = self.auto_target() else {
-            return false;
-        };
+        let (hp, max_hp) = self.world
+            .get::<&Stats>(self.player)
+            .map(|s| (s.hp, s.max_hp))
+            .unwrap_or((1, 1));
+
+        // 0. Emergency heal: quaff healing potion when below 50% HP.
+        if hp * 2 < max_hp {
+            let has_healer = self.inventory.iter().any(|it| {
+                matches!(
+                    it.kind,
+                    ItemKind::Heal(_)
+                        | ItemKind::Potion(PotionKind::Healing)
+                        | ItemKind::Potion(PotionKind::ExtraHealing)
+                )
+            });
+            if has_healer {
+                return self.quaff();
+            }
+        }
+
+        // When health is critically low, skip exploration and retreat to stairs.
+        let low_hp = hp * 100 / max_hp.max(1) < 35;
+
+        // 1. Pick up item at current tile (gold is auto-collected on entry).
+        if let Some(e) = self.entity_at(here) {
+            if self.world.get::<&Item>(e).is_ok() {
+                return self.pickup();
+            }
+        }
+
+        if !low_hp {
+            // Find visible monsters once for both branches below.
+            let visible_monsters: Vec<Point> = self
+                .world
+                .query::<(&Position, &Monster)>()
+                .iter()
+                .filter_map(|(_, (pos, _))| {
+                    if self.map.is_visible(pos.0) { Some(pos.0) } else { None }
+                })
+                .collect();
+
+            if visible_monsters.is_empty() {
+                // 2. No threats visible: advance toward the nearest unexplored frontier.
+                if let Some(dest) = self.auto_explore_target() {
+                    let here = self.player_pos();
+                    if dest == here {
+                        for (dx, dy) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
+                            let np = Point::new(here.x + dx, here.y + dy);
+                            if self.map.is_walkable(np) {
+                                return self.try_move(Point::new(dx, dy));
+                            }
+                        }
+                    } else if let Some(path) = self.map.find_path(here, dest) {
+                        if let Some(&next) = path.first() {
+                            return self.try_move(
+                                Point::new(next.x - here.x, next.y - here.y),
+                            );
+                        }
+                    }
+                }
+            } else {
+                // 2b. Engage nearest visible monster (clear before continuing).
+                let nearest = visible_monsters
+                    .iter()
+                    .min_by_key(|&&p| p.chebyshev(here))
+                    .copied();
+                if let Some(mpos) = nearest {
+                    if let Some(path) = self.map.find_path(here, mpos) {
+                        if let Some(&next) = path.first() {
+                            return self.try_move(
+                                Point::new(next.x - here.x, next.y - here.y),
+                            );
+                        }
+                    }
+                }
+            }
+
+            // 3. Collect floor items now that the level is fully mapped.
+            if let Some(target) = self.nearest_floor_item() {
+                let here = self.player_pos();
+                if target == here {
+                    return self.pickup();
+                }
+                if let Some(path) = self.map.find_path(here, target) {
+                    if let Some(&next) = path.first() {
+                        return self.try_move(
+                            Point::new(next.x - here.x, next.y - here.y),
+                        );
+                    }
+                }
+            }
+        }
+
+        // 4. Go to Amulet or stairs and descend.
+        let Some(target) = self.auto_target() else { return false; };
+        let here = self.player_pos();
         if here == target {
             if self.map.tile(here) == TileKind::StairsDown {
                 return self.try_descend();
             }
             return self.pickup();
         }
-        let Some(path) = self.map.find_path(here, target) else {
-            return false;
-        };
-        let Some(&next) = path.first() else {
-            return false;
-        };
-        self.try_move(Point::new(next.x - here.x, next.y - here.y))
+        if let Some(path) = self.map.find_path(here, target) {
+            if let Some(&next) = path.first() {
+                return self.try_move(Point::new(next.x - here.x, next.y - here.y));
+            }
+        }
+        false
     }
 
     /// Run one full autopilot turn (bot action + world response). Returns true
@@ -2282,7 +2424,7 @@ impl Game {
         self.auto_cooldown = AUTO_PERIOD;
         if !self.auto_turn() {
             self.autopilot = false;
-            self.log("Autopilot stopped (no path to the stairs).");
+            self.log("Autopilot stopped (level fully explored, nothing more to do).");
         }
     }
 
@@ -2291,7 +2433,7 @@ impl Game {
         self.autopilot = !self.autopilot;
         self.auto_cooldown = 0;
         if self.autopilot {
-            self.log("Autopilot engaged — watch the bot descend. Press A to stop.");
+            self.log("Autopilot engaged — explores every room and loots as it goes. Press A to stop.");
         } else {
             self.log("Autopilot disengaged.");
         }
@@ -2302,7 +2444,7 @@ impl Game {
         self.mode = Mode::Playing;
         self.autopilot = true;
         self.auto_cooldown = 0;
-        self.log("Demo mode: autopilot is driving. Press A to take control.");
+        self.log("Demo mode: autopilot is exploring and looting. Press A to take control.");
     }
 
     /// Read-only accessors used by integration tests.
