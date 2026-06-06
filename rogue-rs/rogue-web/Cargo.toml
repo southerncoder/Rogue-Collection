@@ -6,8 +6,9 @@ license.workspace = true
 authors.workspace = true
 description = "macroquad web/native frontend for rogue-engine (WASM-ready)."
 
-[lib]
-crate-type = ["cdylib", "rlib"]
+[[bin]]
+name = "rogue-web"
+path = "src/main.rs"
 
 [dependencies]
 rogue-engine = { path = "../rogue-engine" }

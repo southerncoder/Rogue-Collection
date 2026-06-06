@@ -3,3 +3,5 @@
 Cargo.lock
 
 rogue_scores.json
+
+rogue-web/web/*.wasm

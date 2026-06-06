@@ -5,8 +5,7 @@
 //! Serve (any):     serve `rogue-web/web/` with a static-file server and open index.html
 
 use macroquad::prelude::*;
-use rogue_engine::action::GameAction;
-use rogue_engine::framebuffer::{Cell, FrameBuffer};
+use rogue_engine::framebuffer::FrameBuffer;
 use rogue_engine::game::{Game, SCREEN_HEIGHT, SCREEN_WIDTH};
 
 mod keys;
@@ -15,7 +14,7 @@ mod keys;
 const CELL_W: f32 = 10.0;
 const CELL_H: f32 = 16.0;
 
-#[macroquad::main("Rogue-rs")]
+#[macroquad::main(window_conf)]
 async fn main() {
     let mut game = Game::new();
     loop {
