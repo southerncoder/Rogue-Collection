@@ -99,6 +99,26 @@ pub struct Game {
     pub fb: FrameBuffer,
 }
 
+/// Create a seeded RNG suitable for the current platform.
+///
+/// On WASM the OS entropy API (getrandom) is not available without wasm-bindgen,
+/// which conflicts with miniquad's JS glue. Instead we seed from the wall-clock
+/// time provided by miniquad's own `now()` import (millisecond precision is
+/// sufficient for a game — each session gets a unique seed).
+fn make_rng() -> StdRng {
+    #[cfg(target_arch = "wasm32")]
+    {
+        extern "C" { fn now() -> f64; }
+        // `now()` returns seconds; multiply to get sub-second variance.
+        let seed = unsafe { (now() * 1_000_000.0) as u64 };
+        StdRng::seed_from_u64(seed)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        StdRng::from_entropy()
+    }
+}
+
 impl Default for Game {
     fn default() -> Self {
         Game::new()
@@ -116,7 +136,7 @@ impl Game {
     /// Build a game on an explicit dungeon. Used by `new` and by tests that
     /// load a specific dungeon directory.
     pub fn with_dungeon(dungeon: Dungeon) -> Game {
-        Game::assemble(dungeon, StdRng::from_entropy())
+        Game::assemble(dungeon, make_rng())
     }
 
     /// Build a game on an explicit dungeon with a fixed RNG seed — gives

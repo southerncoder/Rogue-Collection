@@ -10,6 +10,32 @@ use rogue_engine::game::{Game, SCREEN_HEIGHT, SCREEN_WIDTH};
 
 mod keys;
 
+// ── WASM entropy provider ────────────────────────────────────────────────────
+// getrandom's `custom` feature requires a registered backend.  We seed from
+// miniquad's `now()` import (already in the WASM import table) and mix with
+// a simple XorShift-64 to fill the buffer.  Not cryptographically secure but
+// perfectly adequate for a game's RNG seeding.
+#[cfg(target_arch = "wasm32")]
+mod wasm_rng {
+    use getrandom::{register_custom_getrandom, Error};
+
+    fn fill(buf: &mut [u8]) -> Result<(), Error> {
+        extern "C" { fn now() -> f64; }
+        let seed = unsafe { (now() * 1_000_000_000.0) as u64 };
+        let mut s = seed ^ 0xdeadbeef_cafebabe_u64;
+        for chunk in buf.chunks_mut(8) {
+            s ^= s << 13; s ^= s >> 7; s ^= s << 17;
+            for (i, b) in chunk.iter_mut().enumerate() {
+                *b = (s >> (i * 8)) as u8;
+            }
+        }
+        Ok(())
+    }
+
+    register_custom_getrandom!(fill);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 /// How many screen pixels each cell occupies.
 const CELL_W: f32 = 10.0;
 const CELL_H: f32 = 16.0;

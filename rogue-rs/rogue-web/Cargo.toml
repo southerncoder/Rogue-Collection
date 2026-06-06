@@ -14,5 +14,8 @@ path = "src/main.rs"
 rogue-engine = { path = "../rogue-engine" }
 macroquad = "0.4"
 
+# On WASM, getrandom needs an entropy backend.  We use the `custom` feature so
+# wasm-bindgen is never pulled in (it conflicts with miniquad's own JS glue).
+# The implementation lives in main.rs and seeds from miniquad's `now()` import.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-getrandom = { version = "0.2", features = ["js"] }
+getrandom = { version = "0.2", features = ["custom"] }
