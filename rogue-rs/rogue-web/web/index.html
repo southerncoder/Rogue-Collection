@@ -4,20 +4,34 @@
   <meta charset="utf-8" />
   <title>Rogue-rs</title>
   <style>
-    html, body {
-      margin: 0; padding: 0;
-      background: #000;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-    }
+    html, body { margin: 0; padding: 0; background: #000; }
     canvas { display: block; }
+    #err { color: #f55; background: #111; font-family: monospace; font-size: 13px;
+           padding: 12px; white-space: pre; position: fixed; top: 0; left: 0;
+           max-width: 100%; z-index: 10; display: none; }
   </style>
 </head>
 <body>
+  <div id="err"></div>
   <canvas id="glcanvas" tabindex="1"></canvas>
+  <script>
+    // Pre-declare globals that mq_js_bundle.js's quad_net plugin assigns to
+    // without a var/let declaration (causes ReferenceError in strict mode).
+    var register_plugin;
+
+    function showErr(msg) {
+      var d = document.getElementById('err');
+      d.style.display = 'block';
+      d.textContent += msg + '\n';
+    }
+    window.onerror = function(msg, src, line, col, err) {
+      showErr('JS Error: ' + msg + '\n' + (err && err.stack || ''));
+    };
+    window.onunhandledrejection = function(e) {
+      showErr('Promise rejection: ' + e.reason);
+    };
+  </script>
   <script src="mq_js_bundle.js"></script>
-  <script>load("rogue-web.wasm");</script>
+  <script>load("rogue-web.wasm?v=3");</script>
 </body>
 </html>
