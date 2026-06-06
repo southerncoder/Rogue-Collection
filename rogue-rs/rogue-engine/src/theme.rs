@@ -60,6 +60,6 @@ impl Theme {
     pub fn bg(&self)     -> (u8, u8, u8) { (0, 0, 0) }
     pub fn fg(&self)     -> (u8, u8, u8) { self.apply((255, 255, 255)) }
     pub fn header(&self) -> (u8, u8, u8) { self.apply((255, 220, 0)) }
-    pub fn dim_ui(&self) -> (u8, u8, u8) { self.apply((140, 140, 140)) }
+    pub fn dim_ui(&self) -> (u8, u8, u8) { self.apply((190, 190, 190)) }
     pub fn accent(&self) -> (u8, u8, u8) { self.apply((0, 230, 230)) }
 }

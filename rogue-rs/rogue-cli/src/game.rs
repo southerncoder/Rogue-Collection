@@ -2742,55 +2742,54 @@ fn ring_name(kind: RingKind) -> &'static str {
 
 fn tile_render(t: TileKind) -> (char, (u8, u8, u8)) {
     match t {
-        TileKind::Empty => (' ', (0, 0, 0)),
-        TileKind::Floor => ('.', (120, 120, 120)),
-        TileKind::Wall => ('#', (140, 110, 80)),
-        TileKind::Passage => ('#', (90, 90, 90)),
-        TileKind::Door => ('+', (160, 120, 60)),
-        TileKind::SecretDoor => ('#', (140, 110, 80)),
+        TileKind::Empty      => (' ', (0, 0, 0)),
+        TileKind::Floor      => ('.', (175, 175, 175)),
+        TileKind::Wall       => ('#', (200, 165, 110)),
+        TileKind::Passage    => ('#', (135, 135, 135)),
+        TileKind::Door       => ('+', (210, 165, 85)),
+        TileKind::SecretDoor => ('#', (200, 165, 110)),
         TileKind::StairsDown => ('>', (255, 255, 255)),
-        TileKind::StairsUp => ('<', (255, 255, 255)),
-        TileKind::Trap => ('^', (255, 80, 80)),
+        TileKind::StairsUp   => ('<', (255, 255, 255)),
+        TileKind::Trap       => ('^', (255, 110, 110)),
     }
 }
 
 fn item_render(item: &Item) -> Renderable {
     let (glyph, color) = match item.kind {
-        ItemKind::Heal(_) => ('!', (255, 0, 255)),
-        ItemKind::Potion(_) => ('!', (255, 0, 255)),
-        ItemKind::Food => (':', (200, 160, 80)),
-        ItemKind::Weapon { .. } => (')', (180, 180, 220)),
-        ItemKind::Armor(_) => ('[', (150, 150, 200)),
-        ItemKind::Amulet => ('&', (255, 255, 0)),
-        ItemKind::Scroll(_) => ('?', (230, 230, 180)),
-        ItemKind::Ring(_) => ('=', (200, 180, 60)),
-        ItemKind::Wand { .. } => ('/', (160, 220, 255)),
-        ItemKind::Trinket => ('?', (120, 200, 120)),
+        ItemKind::Heal(_)      => ('!', (255,  80, 255)),
+        ItemKind::Potion(_)    => ('!', (255,  80, 255)),
+        ItemKind::Food         => (':', (220, 180, 100)),
+        ItemKind::Weapon { .. }=> (')', (200, 200, 240)),
+        ItemKind::Armor(_)     => ('[', (180, 180, 230)),
+        ItemKind::Amulet       => ('&', (255, 255,   0)),
+        ItemKind::Scroll(_)    => ('?', (240, 240, 200)),
+        ItemKind::Ring(_)      => ('=', (220, 200,  80)),
+        ItemKind::Wand { .. }  => ('/', (180, 230, 255)),
+        ItemKind::Trinket      => ('?', (150, 220, 150)),
     };
     Renderable { glyph, color }
 }
 
 fn monster_color(idx: usize, total: usize) -> (u8, u8, u8) {
-    // Easier (low index) greenish, tougher reddish.
-    let t = if total <= 1 {
-        0.0
-    } else {
-        idx as f32 / (total - 1) as f32
-    };
-    let r = (80.0 + t * 175.0) as u8;
-    let g = (200.0 - t * 150.0) as u8;
-    (r, g, 80)
+    // Easier (low index) greenish, tougher reddish — brighter range.
+    let t = if total <= 1 { 0.0 } else { idx as f32 / (total - 1) as f32 };
+    let r = (150.0 + t * 105.0) as u8;
+    let g = (240.0 - t * 160.0) as u8;
+    (r, g, 110)
 }
 
 fn dim(c: (u8, u8, u8)) -> (u8, u8, u8) {
-    (c.0 / 3, c.1 / 3, c.2 / 3)
+    // 55 % brightness for explored-but-not-currently-visible tiles.
+    ((c.0 as u16 * 55 / 100) as u8,
+     (c.1 as u16 * 55 / 100) as u8,
+     (c.2 as u16 * 55 / 100) as u8)
 }
 
 // ── Boxy (CP437) tile rendering ──────────────────────────────────────────────
 
-const BOXY_WALL:  (u8, u8, u8) = (190, 110, 35);
-const BOXY_FLOOR: (u8, u8, u8) = (50, 210, 50);
-const BOXY_PASS:  (u8, u8, u8) = (90, 90, 90);
+const BOXY_WALL:  (u8, u8, u8) = (210, 130, 50);
+const BOXY_FLOOR: (u8, u8, u8) = (80, 230, 80);
+const BOXY_PASS:  (u8, u8, u8) = (120, 120, 120);
 
 fn is_wall_tile(t: TileKind) -> bool {
     matches!(t, TileKind::Wall | TileKind::SecretDoor)

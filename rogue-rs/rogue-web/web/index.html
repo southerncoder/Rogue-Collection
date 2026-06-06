@@ -4,11 +4,26 @@
   <meta charset="utf-8" />
   <title>Rogue-rs</title>
   <style>
-    html, body { margin: 0; padding: 0; background: #000; }
-    canvas { display: block; }
-    #err { color: #f55; background: #111; font-family: monospace; font-size: 13px;
-           padding: 12px; white-space: pre; position: fixed; top: 0; left: 0;
-           max-width: 100%; z-index: 10; display: none; }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      background: #0d0d0d;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    canvas {
+      display: block;
+      border: 2px solid #3a3a3a;
+      box-shadow: 0 0 40px rgba(80, 120, 80, 0.25),
+                  0 0  8px rgba(0,   0,  0, 0.8);
+    }
+    #err {
+      color: #f55; background: #111; font-family: monospace; font-size: 13px;
+      padding: 12px; white-space: pre; position: fixed; top: 0; left: 0;
+      max-width: 100%; z-index: 10; display: none;
+    }
   </style>
 </head>
 <body>
@@ -32,6 +47,6 @@
     };
   </script>
   <script src="mq_js_bundle.js?v=3"></script>
-  <script>load("rogue-web.wasm?v=5");</script>
+  <script>load("rogue-web.wasm?v=6");</script>
 </body>
 </html>
