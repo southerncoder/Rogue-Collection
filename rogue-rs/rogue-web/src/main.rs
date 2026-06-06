@@ -42,15 +42,14 @@ const CELL_H: f32 = 16.0;
 
 #[macroquad::main(window_conf)]
 async fn main() {
-    let mut game = Game::new();
+    let mut game  = Game::new();
+    let mut input = keys::InputState::new();
     loop {
-        let action = keys::poll_action();
+        let action = input.poll();
         let fb = game.tick(action);
         clear_background(BLACK);
         render_framebuffer(fb);
-        if fb.wants_quit {
-            break;
-        }
+        if fb.wants_quit { break; }
         next_frame().await;
     }
 }
