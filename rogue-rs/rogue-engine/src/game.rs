@@ -86,6 +86,8 @@ pub struct Game {
     quit_return: Mode,
     /// Scroll offset for the message log panel (0 = most recent messages at top).
     log_scroll: usize,
+    /// Scroll offset for the inventory panel.
+    inv_scroll: usize,
     /// Total player turns taken this game (incremented each time the player acts).
     turns: u64,
     /// Status effects currently active on the player.
@@ -202,6 +204,7 @@ impl Game {
             auto_cooldown: 0,
             quit_return: Mode::Title,
             log_scroll: 0,
+            inv_scroll: 0,
             turns: 0,
             status: StatusEffects::default(),
             trap_kinds: Vec::new(),
@@ -845,6 +848,121 @@ impl Game {
         } else {
             drop(s);
             self.log(format!("You don the {name} (no better than your current armor)."));
+        }
+    }
+
+    /// Use (quaff/eat/read/wield/wear/zap) the item at `idx` in the inventory.
+    /// Returns true if a game turn was consumed.
+    fn use_inventory_item(&mut self, idx: usize) -> bool {
+        if idx >= self.inventory.len() {
+            return false;
+        }
+        let item = self.inventory[idx].clone();
+        match item.kind {
+            ItemKind::Heal(amount) => {
+                self.inventory.remove(idx);
+                let mut s = self.world.get::<&mut Stats>(self.player).unwrap();
+                s.hp = (s.hp + amount).min(s.max_hp);
+                drop(s);
+                self.log(format!("You quaff {} and feel better.", item.name));
+                true
+            }
+            ItemKind::Potion(kind) => {
+                self.inventory.remove(idx);
+                self.log(format!("You quaff the {}.", item.name));
+                self.apply_potion(kind);
+                self.known_items.identify(&item.name);
+                true
+            }
+            ItemKind::Food => {
+                self.inventory.remove(idx);
+                self.food = self.data.config.stomach_size
+                    .min(self.food + self.data.config.hunger_time);
+                self.log("You eat the food ration. That hit the spot!");
+                true
+            }
+            ItemKind::Scroll(kind) => {
+                self.inventory.remove(idx);
+                self.log(format!("You read the {}.", item.name));
+                match kind {
+                    ScrollKind::MagicMapping => self.apply_magic_mapping(),
+                    ScrollKind::Teleport => self.apply_teleport(),
+                    ScrollKind::EnchantWeapon => self.apply_enchant_weapon(),
+                    ScrollKind::EnchantArmor => self.apply_enchant_armor(),
+                    ScrollKind::Aggravate => self.apply_aggravate(),
+                    ScrollKind::Identify => {
+                        for it in &self.inventory {
+                            self.known_items.identify(&it.name);
+                        }
+                        self.log("Your items shimmer with clarity! All items identified.");
+                    }
+                    ScrollKind::Unknown => {
+                        self.log("The scroll crumbles to dust. Nothing happens.");
+                    }
+                }
+                true
+            }
+            ItemKind::Weapon { ref damage, hit_plus, dam_plus } => {
+                let d = damage.clone();
+                self.wield(d, hit_plus, dam_plus, &item.name.clone());
+                // Weapon stays in inventory (already equipped in-place)
+                true
+            }
+            ItemKind::Armor(ac) => {
+                self.wear(ac, &item.name.clone());
+                true
+            }
+            ItemKind::Ring(kind) => {
+                if self.left_ring.is_some() && self.right_ring.is_some() {
+                    self.log("You are already wearing two rings. Remove one first (Shift+R).");
+                    return false;
+                }
+                self.inventory.remove(idx);
+                let slot = if self.left_ring.is_none() {
+                    self.left_ring = Some(kind);
+                    "left"
+                } else {
+                    self.right_ring = Some(kind);
+                    "right"
+                };
+                self.log(format!("You put on the {} ({} hand).", item.name, slot));
+                self.on_ring_equip(kind);
+                true
+            }
+            ItemKind::Wand { kind, charges } => {
+                if charges <= 0 {
+                    self.log("The wand is exhausted.");
+                    return false;
+                }
+                if let ItemKind::Wand { charges: ref mut ch, .. } = self.inventory[idx].kind {
+                    *ch -= 1;
+                }
+                self.log(format!("You zap the {}.", item.name));
+                let player_pos = self.player_pos();
+                let target = {
+                    let candidates: Vec<(Entity, i32)> = self.world
+                        .query::<(&Position, &Monster)>()
+                        .iter()
+                        .filter_map(|(e, (pos, _))| {
+                            if !self.map.is_visible(pos.0) { return None; }
+                            let dx = pos.0.x - player_pos.x;
+                            let dy = pos.0.y - player_pos.y;
+                            Some((e, dx * dx + dy * dy))
+                        })
+                        .collect();
+                    candidates.into_iter().min_by_key(|&(_, d)| d).map(|(e, _)| e)
+                };
+                self.apply_wand(kind, target);
+                true
+            }
+            ItemKind::Amulet => {
+                self.log("The Amulet of Yendor glows with golden light.");
+                false
+            }
+            ItemKind::Trinket => {
+                self.log(format!("You examine the {}. It appears to be a trinket.", item.name));
+                false
+            }
         }
     }
 
@@ -1921,64 +2039,75 @@ impl Game {
     }
 
     fn render_inventory(&mut self) {
-        // Ring slots add 3 extra rows (blank + left + right).
-        let ring_rows = 4i32;
-        let item_rows = self.inventory.len().max(1) as i32;
-        let box_h = (item_rows + 4 + ring_rows).max(10);
-        let box_w = 52i32;
-        let x0 = (SCREEN_WIDTH - box_w) / 2;
-        let y0 = (SCREEN_HEIGHT - box_h) / 2;
-        let pad = 2;
-        let tx = x0 + pad;
+        const INV_PAGE: usize = 16;
+        const BOX_W: i32 = 66;
+        const BOX_H: i32 = 24;
 
-        for y in y0..y0 + box_h {
-            for x in x0..x0 + box_w {
+        let x0 = (SCREEN_WIDTH - BOX_W) / 2;
+        let y0 = (SCREEN_HEIGHT - BOX_H) / 2;
+        let pad = 2i32;
+        let tx = x0 + pad;
+        let inner_w = (BOX_W - pad * 2 - 1) as usize;
+
+        for y in y0..y0 + BOX_H {
+            for x in x0..x0 + BOX_W {
                 self.fb.set(x, y, self.theme.fg(), self.theme.bg(), ' ');
             }
         }
-        self.fb.draw_box(x0, y0, box_w, box_h, self.theme.fg(), self.theme.bg());
-        self.fb.print(tx, y0 + 1, self.theme.header(), self.theme.bg(), "INVENTORY");
+        self.fb.draw_box(x0, y0, BOX_W, BOX_H, self.theme.fg(), self.theme.bg());
+        self.fb.print(tx, y0 + 1, self.theme.header(), self.theme.bg(),
+            "INVENTORY   (letter=use  up/dn=scroll  Esc=close)");
 
         if self.inventory.is_empty() {
             self.fb.print(tx, y0 + 3, self.theme.dim_ui(), self.theme.bg(), "Your pack is empty.");
         } else {
-            for (i, item) in self.inventory.iter().enumerate() {
-                let label = (b'a' + i as u8) as char;
-                let category = match item.kind {
-                    ItemKind::Heal(_) => "potion",
-                    ItemKind::Potion(_) => "potion",
-                    ItemKind::Scroll(_) => "scroll",
-                    ItemKind::Food => "food",
-                    ItemKind::Weapon { .. } => "weapon",
-                    ItemKind::Armor(_) => "armor",
-                    ItemKind::Amulet => "amulet",
-                    ItemKind::Ring(_) => "ring",
-                    ItemKind::Wand { .. } => "wand",
-                    ItemKind::Trinket => "trinket",
+            let total = self.inventory.len();
+            let max_scroll = total.saturating_sub(INV_PAGE);
+            let scroll = self.inv_scroll.min(max_scroll);
+            let visible = total.min(INV_PAGE);
+
+            for i in 0..visible {
+                let idx = i + scroll;
+                if idx >= total { break; }
+                let item = &self.inventory[idx];
+                let label = inv_label(idx);
+                let action = item_action_hint(&item.kind);
+                let name_w = inner_w.saturating_sub(label.len() + 1 + action.len() + 2);
+                let name_trunc = if item.name.len() > name_w {
+                    format!("{:.prec$}", item.name, prec = name_w)
+                } else {
+                    format!("{:<width$}", item.name, width = name_w)
                 };
-                let line = format!("{})  {:<36} [{}]", label, item.name, category);
-                self.fb.print(tx, y0 + 3 + i as i32, self.theme.fg(), self.theme.bg(), &line);
+                let line = format!("{} {} {}", label, name_trunc, action);
+                let fg = if matches!(item.kind, ItemKind::Amulet) {
+                    self.theme.header()
+                } else {
+                    self.theme.fg()
+                };
+                self.fb.print(tx, y0 + 3 + i as i32, fg, self.theme.bg(), &line);
             }
+
+            if scroll > 0 {
+                self.fb.print(x0 + BOX_W - 3, y0 + 3, self.theme.accent(), self.theme.bg(), "^");
+            }
+            if scroll < max_scroll {
+                self.fb.print(x0 + BOX_W - 3, y0 + 2 + visible as i32, self.theme.accent(), self.theme.bg(), "v");
+            }
+
+            let count_str = format!("{}/{} items", visible.min(total - scroll), total);
+            self.fb.print(tx, y0 + BOX_H - 5, self.theme.dim_ui(), self.theme.bg(), &count_str);
         }
 
-        // Ring slots section.
-        let ring_y = y0 + item_rows + 4;
-        self.fb.print(tx, ring_y, self.theme.header(), self.theme.bg(), "Rings worn:");
+        let ring_y = y0 + BOX_H - 4;
+        self.fb.print(tx, ring_y, self.theme.header(), self.theme.bg(), "Equipped rings:");
         let left_str = self.left_ring.map(|k| format!("ring of {}", ring_name(k)))
             .unwrap_or_else(|| "(none)".to_string());
         let right_str = self.right_ring.map(|k| format!("ring of {}", ring_name(k)))
             .unwrap_or_else(|| "(none)".to_string());
-        self.fb.print(tx, ring_y + 1, self.theme.fg(), self.theme.bg(), format!("  Left : {left_str}"));
-        self.fb.print(tx, ring_y + 2, self.theme.fg(), self.theme.bg(), format!("  Right: {right_str}"));
-        self.fb.print(tx, ring_y + 3, self.theme.dim_ui(), self.theme.bg(), "  p: put on ring   Shift+R: remove ring");
-
-        self.fb.print(
-            tx,
-            y0 + box_h - 2,
-            self.theme.dim_ui(),
-            self.theme.bg(),
-            "Press any key to return to the game.",
-        );
+        self.fb.print(tx, ring_y + 1, self.theme.fg(), self.theme.bg(),
+            format!("  Left: {:<24}  Right: {}", left_str, right_str));
+        self.fb.print(tx, ring_y + 2, self.theme.dim_ui(), self.theme.bg(),
+            "  p: put on ring   Shift+R: remove ring");
     }
 
     fn render_message_log(&mut self) {
@@ -2501,9 +2630,40 @@ impl Game {
                     }
                 }
             },
-            Mode::Help | Mode::Inventory => {
+            Mode::Help => {
                 if action.is_some() {
                     self.mode = Mode::Playing;
+                }
+            }
+            Mode::Inventory => {
+                const INV_PAGE: usize = 16;
+                match action {
+                    Some(GameAction::Cancel) | Some(GameAction::Quit) | Some(GameAction::Inventory) => {
+                        self.mode = Mode::Playing;
+                    }
+                    Some(GameAction::ScrollUp) => {
+                        if self.inv_scroll > 0 {
+                            self.inv_scroll -= 1;
+                        }
+                    }
+                    Some(GameAction::ScrollDown) => {
+                        let max = self.inventory.len().saturating_sub(INV_PAGE);
+                        if self.inv_scroll < max {
+                            self.inv_scroll += 1;
+                        }
+                    }
+                    Some(GameAction::Char(c)) => {
+                        if let Some(idx) = char_to_inv_idx(c, self.inv_scroll) {
+                            if idx < self.inventory.len() {
+                                self.mode = Mode::Playing;
+                                let acted = self.use_inventory_item(idx);
+                                if acted && self.mode == Mode::Playing {
+                                    self.end_player_turn();
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
                 }
             }
             Mode::MessageLog => {
@@ -2732,6 +2892,41 @@ fn ring_name(kind: RingKind) -> &'static str {
         RingKind::Stealth => "stealth",
         RingKind::MaintainArmor => "maintain armor",
         RingKind::Unknown => "unknown",
+    }
+}
+
+/// Label character for inventory slot `idx`: a–z for 0–25, 0–9 for 26–35.
+fn inv_label(idx: usize) -> String {
+    if idx < 26 {
+        format!("{})", (b'a' + idx as u8) as char)
+    } else {
+        format!("{})", idx - 26)
+    }
+}
+
+/// Short action hint shown next to each inventory item.
+fn item_action_hint(kind: &ItemKind) -> &'static str {
+    match kind {
+        ItemKind::Heal(_) | ItemKind::Potion(_) => "[quaff]",
+        ItemKind::Food                           => "[eat]  ",
+        ItemKind::Scroll(_)                      => "[read] ",
+        ItemKind::Weapon { .. }                  => "[wield]",
+        ItemKind::Armor(_)                       => "[wear] ",
+        ItemKind::Ring(_)                        => "[put on]",
+        ItemKind::Wand { .. }                    => "[zap]  ",
+        ItemKind::Amulet                         => "[AMULET]",
+        ItemKind::Trinket                        => "[?]    ",
+    }
+}
+
+/// Map a char to an inventory index (a–z → 0–25, 0–9 → 26–35).
+fn char_to_inv_idx(c: char, scroll: usize) -> Option<usize> {
+    if c.is_ascii_lowercase() {
+        Some(scroll + (c as u8 - b'a') as usize)
+    } else if c.is_ascii_digit() {
+        Some(scroll + 26 + (c as u8 - b'0') as usize)
+    } else {
+        None
     }
 }
 
