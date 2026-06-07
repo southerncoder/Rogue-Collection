@@ -2297,21 +2297,33 @@ impl Game {
         self.render_autopilot_log();
     }
 
-    /// Scrolling 4-line log overlay shown in the bottom-right of the map
-    /// while the autopilot is driving.  No border — plain text over the map.
+    /// Bordered 4-line log overlay in the bottom-right corner, shown only
+    /// while the autopilot is driving.
     fn render_autopilot_log(&mut self) {
         if !self.autopilot { return; }
 
-        const LINES: usize = 4;
-        const WIDTH: usize = 38;
+        // 38 wide × 6 tall box, flush against the right edge.
+        const CONTENT_W: usize = 34; // interior text width
+        const BOX_W: i32 = 38;       // outer width  (FrameBuffer convention)
+        const BOX_H: i32 = 6;        // outer height
+        let x0 = SCREEN_WIDTH - BOX_W;          // col 42 → flush right
+        let y0 = MAP_TOP + self.map.height - BOX_H; // rows 19-24
+        let tx = x0 + 2;
 
-        let x0 = SCREEN_WIDTH - WIDTH as i32;
-        let y0 = self.map.height + MAP_TOP - LINES as i32;
+        // Clear background.
+        for y in y0..y0 + BOX_H {
+            for x in x0..x0 + BOX_W {
+                self.fb.set(x, y, self.theme.fg(), self.theme.bg(), ' ');
+            }
+        }
+
+        // Accent-coloured border — signals autopilot is active.
+        self.fb.draw_box(x0, y0, BOX_W, BOX_H, self.theme.accent(), self.theme.bg());
 
         let msgs: Vec<String> = self.log
             .iter()
             .rev()
-            .take(LINES)
+            .take(4)
             .map(|s| s.clone())
             .collect::<Vec<_>>()
             .into_iter()
@@ -2320,13 +2332,13 @@ impl Game {
 
         let total = msgs.len();
         for (i, msg) in msgs.iter().enumerate() {
-            let display = if msg.len() > WIDTH { &msg[..WIDTH] } else { msg.as_str() };
+            let display = if msg.len() > CONTENT_W { &msg[..CONTENT_W] } else { msg.as_str() };
             let fg = if i + 1 == total {
                 self.theme.accent()
             } else {
                 self.theme.dim_ui()
             };
-            self.fb.print(x0, y0 + i as i32, fg, self.theme.bg(), display);
+            self.fb.print(tx, y0 + 1 + i as i32, fg, self.theme.bg(), display);
         }
     }
 

@@ -2304,17 +2304,30 @@ impl Game {
     fn render_autopilot_log(&self, ctx: &mut BTerm) {
         if !self.autopilot { return; }
 
-        const LINES: usize = 4;
-        const WIDTH: usize = 38;
+        // Box is 38 wide × 6 tall, flush against the right edge.
+        // Bracket-lib draw_box(x,y,w,h) draws corners at (x,y) and (x+w, y+h).
+        const CONTENT_W: usize = 34; // interior width (38 - 2 border - 2 padding)
+        const BOX_W: i32 = 37;       // passed to draw_box (outer_width - 1)
+        const BOX_H: i32 = 5;        // passed to draw_box (outer_height - 1)
+        let x0 = SCREEN_WIDTH - BOX_W - 1; // flush right: col 42
+        let y0 = MAP_TOP + self.map.height - BOX_H - 1; // rows 19-24
+        let tx = x0 + 2; // 1 space of interior padding
 
-        let x0 = SCREEN_WIDTH - WIDTH as i32;
-        let y0 = self.map.height + MAP_TOP - LINES as i32;
+        // Clear background so text is readable over the map.
+        for y in y0..=y0 + BOX_H {
+            for x in x0..=x0 + BOX_W {
+                ctx.set(x, y, self.theme.fg(), self.theme.bg(), to_cp437(' '));
+            }
+        }
 
-        // Collect the most recent LINES messages (oldest first for display).
+        // Accent-coloured border — a visual cue that autopilot is driving.
+        ctx.draw_box(x0, y0, BOX_W, BOX_H, self.theme.accent(), self.theme.bg());
+
+        // Collect the most recent 4 messages (oldest first for display).
         let msgs: Vec<&str> = self.log
             .iter()
             .rev()
-            .take(LINES)
+            .take(4)
             .map(|s| s.as_str())
             .collect::<Vec<_>>()
             .into_iter()
@@ -2322,13 +2335,13 @@ impl Game {
             .collect();
 
         for (i, msg) in msgs.iter().enumerate() {
-            let display = if msg.len() > WIDTH { &msg[..WIDTH] } else { msg };
+            let display = if msg.len() > CONTENT_W { &msg[..CONTENT_W] } else { msg };
             let fg = if i + 1 == msgs.len() {
-                self.theme.accent()   // most recent line: brighter
+                self.theme.accent()   // most recent: bright
             } else {
-                self.theme.dim_ui()   // older lines: muted
+                self.theme.dim_ui()   // older: muted
             };
-            ctx.print_color(x0, y0 + i as i32, fg, self.theme.bg(), display);
+            ctx.print_color(tx, y0 + 1 + i as i32, fg, self.theme.bg(), display);
         }
     }
 
