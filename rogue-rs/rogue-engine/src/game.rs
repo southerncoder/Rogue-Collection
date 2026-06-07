@@ -129,9 +129,13 @@ impl Default for Game {
 
 impl Game {
     pub fn new() -> Game {
-        // Prefer on-disk assets (so editing dungeon.ron / levels takes effect),
-        // falling back to a purely procedural dungeon if they are absent.
-        let dungeon = Dungeon::load("assets").unwrap_or_else(|| Dungeon::default_procedural(26));
+        // On WASM the filesystem is unavailable, so use the dungeon embedded
+        // at compile time.  On native, prefer on-disk assets so level edits
+        // take effect without a recompile; fall back to the bundled version.
+        #[cfg(target_arch = "wasm32")]
+        let dungeon = Dungeon::bundled();
+        #[cfg(not(target_arch = "wasm32"))]
+        let dungeon = Dungeon::load("assets").unwrap_or_else(Dungeon::bundled);
         Game::with_dungeon(dungeon)
     }
 

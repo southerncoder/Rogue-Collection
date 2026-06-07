@@ -131,6 +131,22 @@ pub struct Dungeon {
     pub repeat_last: bool,
 }
 
+// Dungeon + level files embedded at compile time so they are available on
+// WASM (which has no filesystem access) and as a fallback on native.
+const DUNGEON_RON:  &str = include_str!("../../../assets/dungeon.ron");
+const LEVEL_ROGUE:    &str = include_str!("../../../assets/levels/rogue.ron");
+const LEVEL_ENTRANCE: &str = include_str!("../../../assets/levels/entrance.ron");
+const LEVEL_VAULT:    &str = include_str!("../../../assets/levels/vault.ron");
+
+fn bundled_level_text(name: &str) -> Option<&'static str> {
+    match name {
+        "rogue.ron"    => Some(LEVEL_ROGUE),
+        "entrance.ron" => Some(LEVEL_ENTRANCE),
+        "vault.ron"    => Some(LEVEL_VAULT),
+        _              => None,
+    }
+}
+
 impl Dungeon {
     /// A purely procedural dungeon of `depth` levels (used as the default).
     pub fn default_procedural(depth: i32) -> Dungeon {
@@ -141,6 +157,30 @@ impl Dungeon {
                 .collect(),
             repeat_last: true,
         }
+    }
+
+    /// Parse the dungeon from assets embedded in the binary at compile time.
+    /// This is the only source available on WASM and a fallback on native.
+    pub fn bundled() -> Dungeon {
+        let file: DungeonFile = ron::from_str(DUNGEON_RON)
+            .expect("bundled dungeon.ron must parse");
+        let mut levels = Vec::with_capacity(file.levels.len());
+        for r in file.levels {
+            let def = match r {
+                LevelRef::Procedural(p) => LevelDef::Procedural(p),
+                LevelRef::Fixed(f)      => LevelDef::Fixed(f),
+                LevelRef::File(ref name) => {
+                    if let Some(text) = bundled_level_text(name) {
+                        ron::from_str::<LevelDef>(text)
+                            .unwrap_or(LevelDef::Procedural(ProcParams::default()))
+                    } else {
+                        LevelDef::Procedural(ProcParams::default())
+                    }
+                }
+            };
+            levels.push(def);
+        }
+        Dungeon { name: file.name, levels, repeat_last: file.repeat_last }
     }
 
     /// Resolve a `dungeon.ron` in `dir`, loading any `File` references from
