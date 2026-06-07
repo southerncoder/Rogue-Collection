@@ -2296,6 +2296,40 @@ impl Game {
 
         self.render_status(ctx);
         self.render_hints(ctx);
+        self.render_autopilot_log(ctx);
+    }
+
+    /// Scrolling 4-line log overlay shown in the bottom-right of the map
+    /// while the autopilot is driving.  No border — plain text over the map.
+    fn render_autopilot_log(&self, ctx: &mut BTerm) {
+        if !self.autopilot { return; }
+
+        const LINES: usize = 4;
+        const WIDTH: usize = 38;
+
+        let x0 = SCREEN_WIDTH - WIDTH as i32;
+        let y0 = self.map.height + MAP_TOP - LINES as i32;
+
+        // Collect the most recent LINES messages (oldest first for display).
+        let msgs: Vec<&str> = self.log
+            .iter()
+            .rev()
+            .take(LINES)
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+
+        for (i, msg) in msgs.iter().enumerate() {
+            let display = if msg.len() > WIDTH { &msg[..WIDTH] } else { msg };
+            let fg = if i + 1 == msgs.len() {
+                self.theme.accent()   // most recent line: brighter
+            } else {
+                self.theme.dim_ui()   // older lines: muted
+            };
+            ctx.print_color(x0, y0 + i as i32, fg, self.theme.bg(), display);
+        }
     }
 
     fn render_status(&self, ctx: &mut BTerm) {

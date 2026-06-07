@@ -2294,6 +2294,40 @@ impl Game {
 
         self.render_status();
         self.render_hints();
+        self.render_autopilot_log();
+    }
+
+    /// Scrolling 4-line log overlay shown in the bottom-right of the map
+    /// while the autopilot is driving.  No border — plain text over the map.
+    fn render_autopilot_log(&mut self) {
+        if !self.autopilot { return; }
+
+        const LINES: usize = 4;
+        const WIDTH: usize = 38;
+
+        let x0 = SCREEN_WIDTH - WIDTH as i32;
+        let y0 = self.map.height + MAP_TOP - LINES as i32;
+
+        let msgs: Vec<String> = self.log
+            .iter()
+            .rev()
+            .take(LINES)
+            .map(|s| s.clone())
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+
+        let total = msgs.len();
+        for (i, msg) in msgs.iter().enumerate() {
+            let display = if msg.len() > WIDTH { &msg[..WIDTH] } else { msg.as_str() };
+            let fg = if i + 1 == total {
+                self.theme.accent()
+            } else {
+                self.theme.dim_ui()
+            };
+            self.fb.print(x0, y0 + i as i32, fg, self.theme.bg(), display);
+        }
     }
 
     fn render_status(&mut self) {
