@@ -4,20 +4,23 @@ This repository contains two parts:
 
 ## `rogue-rs/` — Modern Rust Rogue (active)
 
-A from-scratch, data-driven reimplementation of Rogue in modern Rust, built on
-[`bracket-lib`](https://github.com/amethyst/bracket-lib) (terminal rendering, FOV,
-pathfinding), a lightweight ECS, and `serde`/RON for content.
+**Created by [SouthernCoder](https://github.com/southerncoder)** as a from-scratch,
+data-driven reimplementation of Rogue in modern Rust. Developed using **AI agentic
+coding** with [GitHub Copilot](https://github.com/features/copilot), using the legacy
+C/C++ collection below as the behavioral and rules reference.
 
-Goals:
-- **Playable**: `cd rogue-rs && cargo run --bin rogue`.
-- **Web/WASM**: runs in the browser via macroquad — `cargo build -p rogue-web --target wasm32-unknown-unknown`.
-- **Easy to extend**: add new dungeon levels by dropping data files in
-  `rogue-rs/assets/levels/` — supporting both **procedural** generation and
-  **hand-authored fixed maps**. No recompile required for native; rebuild WASM after changes.
+Built on [`bracket-lib`](https://github.com/amethyst/bracket-lib) (terminal rendering,
+FOV, pathfinding), a lightweight ECS, and `serde`/RON for content.
+
+Features:
+- **Playable**: `cd rogue-rs && cargo run --bin rogue`
+- **Web/WASM**: runs in the browser via macroquad — `cargo build -p rogue-web --target wasm32-unknown-unknown`
+- **Easy to extend**: add dungeon levels by dropping RON files in `rogue-rs/assets/levels/` — procedural *or* hand-authored fixed maps. No recompile required for native.
+- **Interactive inventory**, autopilot bot, multiple color themes (classic, amber, green, boxy, tiled)
 
 The rules follow Unix **Rogue v5.4.2** as the canonical reference.
 
-See [`rogue-rs/README.md`](rogue-rs/README.md) for full documentation.
+See [`rogue-rs/README.md`](rogue-rs/README.md) for full documentation and [`rogue-rs/docs/`](rogue-rs/docs/) for architecture, gameplay, and authoring guides.
 
 ## `legacy/` — Original C/C++ Collection (preserved for reference)
 
