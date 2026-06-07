@@ -2317,8 +2317,19 @@ impl Game {
             }
         }
 
-        // Accent-coloured border — signals autopilot is active.
-        self.fb.draw_box(x0, y0, BOX_W, BOX_H, self.theme.accent(), self.theme.bg());
+        // ASCII border: - for horizontal, : for vertical, + corners.
+        for x in x0..x0 + BOX_W {
+            self.fb.set(x, y0,         self.theme.dim_ui(), self.theme.bg(), '-');
+            self.fb.set(x, y0 + BOX_H - 1, self.theme.dim_ui(), self.theme.bg(), '-');
+        }
+        for y in y0..y0 + BOX_H {
+            self.fb.set(x0,         y, self.theme.dim_ui(), self.theme.bg(), ':');
+            self.fb.set(x0 + BOX_W - 1, y, self.theme.dim_ui(), self.theme.bg(), ':');
+        }
+        self.fb.set(x0,             y0,             self.theme.dim_ui(), self.theme.bg(), '+');
+        self.fb.set(x0 + BOX_W - 1, y0,             self.theme.dim_ui(), self.theme.bg(), '+');
+        self.fb.set(x0,             y0 + BOX_H - 1, self.theme.dim_ui(), self.theme.bg(), '+');
+        self.fb.set(x0 + BOX_W - 1, y0 + BOX_H - 1, self.theme.dim_ui(), self.theme.bg(), '+');
 
         let msgs: Vec<String> = self.log
             .iter()

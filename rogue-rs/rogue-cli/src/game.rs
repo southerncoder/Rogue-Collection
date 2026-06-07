@@ -2320,8 +2320,19 @@ impl Game {
             }
         }
 
-        // Accent-coloured border — a visual cue that autopilot is driving.
-        ctx.draw_box(x0, y0, BOX_W, BOX_H, self.theme.accent(), self.theme.bg());
+        // ASCII border: - for horizontal, : for vertical, + corners.
+        for x in x0..x0 + BOX_W {
+            ctx.set(x, y0,         self.theme.dim_ui(), self.theme.bg(), to_cp437('-'));
+            ctx.set(x, y0 + BOX_H, self.theme.dim_ui(), self.theme.bg(), to_cp437('-'));
+        }
+        for y in y0..=y0 + BOX_H {
+            ctx.set(x0,         y, self.theme.dim_ui(), self.theme.bg(), to_cp437(':'));
+            ctx.set(x0 + BOX_W, y, self.theme.dim_ui(), self.theme.bg(), to_cp437(':'));
+        }
+        ctx.set(x0,         y0,         self.theme.dim_ui(), self.theme.bg(), to_cp437('+'));
+        ctx.set(x0 + BOX_W, y0,         self.theme.dim_ui(), self.theme.bg(), to_cp437('+'));
+        ctx.set(x0,         y0 + BOX_H, self.theme.dim_ui(), self.theme.bg(), to_cp437('+'));
+        ctx.set(x0 + BOX_W, y0 + BOX_H, self.theme.dim_ui(), self.theme.bg(), to_cp437('+'));
 
         // Collect the most recent 4 messages (oldest first for display).
         let msgs: Vec<&str> = self.log
